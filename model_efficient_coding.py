@@ -107,12 +107,14 @@ class value_efficient_coding():
         plt.xlim((0,4))
         plt.title('Approximated')
         plt.show()
+        plt.savefig('Approximated.png')
         plt.figure()
         xlocs = np.linspace(1,self.N-1,self.N-1)
         plt.bar(xlocs, np.array(quantiles))
         for i, v in enumerate(np.array(quantiles)):
             plt.text(xlocs[i] - 0.25, v + 0.01, str(round(v,2)))
         plt.title('quantile for each neuron')
+        plt.savefig('quantile for each neuron.png')
 
         return quantiles
 
@@ -152,17 +154,21 @@ class value_efficient_coding():
         plt.ylim((0,round(np.max(self.neurons_[self.N-2]),1)))
         plt.title('Response functions of {0} neurons'.format(self.N-1))
         plt.show()
+        plt.savefig('Response functions of {0} neurons.png'.format(self.N-1))
 
     def plot_others(self):
         plt.figure()
         plt.title('Prior distribution')
         plt.plot(self.x, self.p_prior)
+        plt.savefig('Prior distribution.png')
         plt.figure()
         plt.title('Density function')
         plt.plot(self.x, self.d_x)
+        plt.savefig('Density function.png')
         plt.figure()
         plt.title('Gain function')
         plt.plot(self.x,self.g_x)
+        plt.savefig('Gain function.png')
 
     # def
 
