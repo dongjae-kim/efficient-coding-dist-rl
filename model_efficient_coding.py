@@ -1,7 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 from scipy.stats import norm, poisson, uniform, gamma
-
+import os
 # efficient coding using sigmoid response functions
 
 class value_efficient_coding():
@@ -95,7 +95,7 @@ class value_efficient_coding():
             g_sns.append(g_sn)
             x_gsns.append(self.sn[i])
 
-    def plot_approximate_kinky(self,r_star = 0.02):
+    def plot_approximate_kinky(self,r_star = 0.02,name='gamma'):
         plt.figure()
         colors = np.linspace(0, 0.7, self.N)
         quantiles = []
@@ -103,18 +103,27 @@ class value_efficient_coding():
             (E_hn_prime_lower, E_hn_prime_higher, quantile), (x, y), theta_x = self.hn_approximate(i,r_star)
             quantiles.append(quantile)
             plt.plot(x, y, color=str(colors[i]))
-        plt.ylim((0,.10))
-        plt.xlim((0,4))
+
+        if name == 'gamma':
+            plt.ylim((0,.10))
+            plt.xlim((0,4))
+        elif name =='normal':
+            plt.ylim((0,.10))
+            plt.xlim((3,6))
         plt.title('Approximated')
         plt.show()
-        plt.savefig('Approximated.png')
+        if not os.path.exists(name + '/'):
+            os.makedirs(name + '/')
+        plt.savefig(name + '/' + 'Approximated.png')
         plt.figure()
         xlocs = np.linspace(1,self.N-1,self.N-1)
         plt.bar(xlocs, np.array(quantiles))
         for i, v in enumerate(np.array(quantiles)):
             plt.text(xlocs[i] - 0.25, v + 0.01, str(round(v,2)))
         plt.title('quantile for each neuron')
-        plt.savefig('quantile for each neuron.png')
+        if not os.path.exists(name + '/'):
+            os.makedirs(name + '/')
+        plt.savefig(name + '/' + 'quantile for each neuron.png')
 
         return quantiles
 
@@ -145,7 +154,7 @@ class value_efficient_coding():
 
         return (E_hn_prime_lower, E_hn_prime_higher, E_hn_prime_higher/(E_hn_prime_higher+E_hn_prime_lower)), (self.x, np.array(out_)), theta_x
 
-    def plot_neurons(self):
+    def plot_neurons(self,name = 'gamma'):
         # plot neurons response functions
         colors = np.linspace(0, 0.7, self.N)
         plt.figure()
@@ -154,21 +163,29 @@ class value_efficient_coding():
         plt.ylim((0,round(np.max(self.neurons_[self.N-2]),1)))
         plt.title('Response functions of {0} neurons'.format(self.N-1))
         plt.show()
-        plt.savefig('Response functions of {0} neurons.png'.format(self.N-1))
+        if not os.path.exists(name + '/'):
+            os.makedirs(name + '/')
+        plt.savefig(name + '/' + 'Response functions of {0} neurons.png'.format(self.N-1))
 
-    def plot_others(self):
+    def plot_others(self, name='gamma'):
         plt.figure()
         plt.title('Prior distribution')
         plt.plot(self.x, self.p_prior)
-        plt.savefig('Prior distribution.png')
+        if not os.path.exists(name + '/'):
+            os.makedirs(name + '/')
+        plt.savefig(name + '/' + 'Prior distribution.png')
         plt.figure()
         plt.title('Density function')
         plt.plot(self.x, self.d_x)
-        plt.savefig('Density function.png')
+        if not os.path.exists(name + '/'):
+            os.makedirs(name + '/')
+        plt.savefig(name + '/' + 'Density function.png')
         plt.figure()
         plt.title('Gain function')
         plt.plot(self.x,self.g_x)
-        plt.savefig('Gain function.png')
+        if not os.path.exists(name + '/'):
+            os.makedirs(name + '/')
+        plt.savefig(name + '/' + 'Gain function.png')
 
     # def
 
@@ -179,12 +196,18 @@ class value_dist_rl(value_efficient_coding):
 def main():
     print('Initiailze efficient coding part')
     ec = value_efficient_coding('gamma')
-    ec.plot_neurons()
-    ec.plot_others()
+    ec.plot_neurons('gamma')
+    ec.plot_others('gamma')
     r_star = np.max(ec.neurons_[0])*.9
-    ec.plot_approximate_kinky(r_star)
+    ec.plot_approximate_kinky(r_star,'gamma')
 
 
+    print('Initiailze efficient coding part')
+    ec = value_efficient_coding('normal')
+    ec.plot_neurons('normal')
+    ec.plot_others('normal')
+    r_star = np.max(ec.neurons_[0])*.9
+    ec.plot_approximate_kinky(r_star,'normal')
 
 
     print('Initiailze distributional reinforcement learning part')
