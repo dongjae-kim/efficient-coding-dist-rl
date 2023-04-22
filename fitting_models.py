@@ -2020,11 +2020,16 @@ class fitting_model_model():
         # bound
         if XX[0] <= 0.01:
             XX[0] = 0.01
-        if XX[0] > 50:
-            XX[0] = 50
+        if XX[0] > 1:
+            XX[0] = 1
+        # bound
+        if XX[1] <= 0.01:
+            XX[1] = 0.01
+        if XX[1] > 50:
+            XX[1] = 50
 
         print(XX)
-        fit_ = value_efficient_coding_moment('./', N_neurons=self.fit_.N, R_t=self.fit_.R, X_OPT_ALPH = self.X_OPT_ALPH,
+        fit_ = value_efficient_coding_moment('./', N_neurons=self.fit_.N, R_t=self.fit_.R, X_OPT_ALPH = XX[0],
                                            slope_scale=5.07)
         fit_.replace_with_pseudo()
 
@@ -2036,7 +2041,7 @@ class fitting_model_model():
         r_star = np.min(res_max)
         g_x_rstar = []
         for i in range(len(fit_.neurons_)):
-            g_x_rstar.append(XX)
+            g_x_rstar.append(XX[1])
 
         # check if the g_x_rstar passes every data points
         check_ = []
@@ -2240,7 +2245,8 @@ def main():
     import time
 
 
-    num_seed = 1000
+    num_seed = 10
+    XX0 = np.linspace(0,1, num_seed).tolist()
     XX1 = np.linspace(1, 10, num_seed).tolist() #
     from itertools import product
 
@@ -2257,12 +2263,18 @@ def main():
         # if not os.path.exists(savedir + 'res_fit_apprx_freealpha_freebeta_lognormal{0}.pkl'.format(ii)):
         if True:
 
+            # make combination of XX0 and XX1
+
+            # make paramters using meshgrid
+            XX = np.array(np.meshgrid(XX0, XX1)).T.reshape(-1, 2)
+
             # parameter seeds
             print(ii)
             t0 = time.time()
             res_s = []
-            for XX in XX1:
-                res = minimize(fit_class.neuron_R_fit_timesG_fixedR_paramLog, XX, options={'maxiter': 1e5, 'disp': True})
+            for ii in range(len(XX)):
+                XX_ = XX[ii]
+                res = minimize(fit_class.neuron_R_fit_timesG_fixedR_paramLog, XX_, options={'maxiter': 1e5, 'disp': True})
                 res_s.append(res)
                 t1 = time.time()
                 print('!!!!! {}s !!!!!'.format(t1 - t0))
