@@ -94,7 +94,7 @@ class value_efficient_coding_moment():
             p_prior_inf_sum) # - 1e-5  # for approximation
         self.cum_P_pseudo /= 1+1e-3
 
-        norm_d = self.p_prior**X_OPT_ALPH / (1-self.cum_P)**(1-X_OPT_ALPH)
+        norm_d = self.p_prior / (1-self.cum_P)**(1-X_OPT_ALPH)
         NRMLZR = np.sum(norm_d * self._x_gap)
         norm_d = norm_d / NRMLZR
 
@@ -106,12 +106,12 @@ class value_efficient_coding_moment():
 
 
         # norm_g = self.p_prior_inf**(1-XX2) * self.R / ((self.N) * (1 - self.cum_P_pseudo)**XX2)
-        norm_g = self.p_prior**(1-X_OPT_ALPH) / ((1 - self.cum_P)**X_OPT_ALPH)
+        norm_g = 1 / ((1 - self.cum_P)**X_OPT_ALPH)
         # norm_g /= NRMLZR
         norm_g /= self.N
         norm_g *= self.R
 
-        norm_d_pseudo = self.p_prior_pseudo**X_OPT_ALPH / \
+        norm_d_pseudo = self.p_prior_pseudo / \
             (1-self.cum_P_pseudo)**(1-X_OPT_ALPH)
         NRMLZR_pseudo = np.sum(norm_d_pseudo * self._x_gap)
         norm_d_pseudo = norm_d_pseudo / NRMLZR_pseudo
@@ -122,7 +122,7 @@ class value_efficient_coding_moment():
         thresh_pseudo_ = np.interp(p_thresh, cum_norm_D_pseudop, self.x_inf)
         quant_pseudo_ = np.interp(thresh_pseudo_, self.x_inf, cum_norm_D_pseudop)
 
-        norm_g_pseudo = self.p_prior_pseudo**(1-X_OPT_ALPH) / \
+        norm_g_pseudo = 1 / \
             ((1 - self.cum_P_pseudo)**X_OPT_ALPH)
         norm_g_pseudo /= self.N
         norm_g_pseudo *= self.R
@@ -2246,7 +2246,7 @@ def main():
 
     import sys
 
-    savedir = 'res_fit/'
+    savedir = 'res_fit_alpha_fit/'
     if not os.path.exists(savedir):
         os.makedirs(savedir)
 
@@ -2258,12 +2258,7 @@ def main():
         if True:
 
             # parameter seeds
-            len_ind = int(len(XX1) / max_total)
-
-            ind = np.linspace(len_ind * ii, len_ind * (ii + 1) - 1, len_ind).astype(np.int)
-
             print(ii)
-            XX1 = np.array(XX1)[ind].tolist()
             t0 = time.time()
             res_s = []
             for XX in XX1:
@@ -2728,5 +2723,5 @@ def test():
 
 
 if __name__ == "__main__":
-    # main()
+    main()
     test()
