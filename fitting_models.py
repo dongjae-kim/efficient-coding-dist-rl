@@ -2016,7 +2016,6 @@ class fitting_model_model():
         return RPs
 
     def neuron_R_fit_timesG_fixedR_paramLog(self, XX):
-
         # bound
         if XX[0] <= 0.01:
             XX[0] = 0.01
@@ -2259,8 +2258,8 @@ def main():
     max_total = 1000
     # ii = int(sys.argv[1])
     ii = 0
-    if True:
-        # if not os.path.exists(savedir + 'res_fit_apprx_freealpha_freebeta_lognormal{0}.pkl'.format(ii)):
+    # if True:
+    if not os.path.exists(savedir + 'res_fit_apprx_freealpha_freebeta_lognormal{0}.pkl'.format(ii)):
         if True:
 
             # make combination of XX0 and XX1
@@ -2456,7 +2455,7 @@ class statistics_():
 
 def test():
     import pickle as pkl
-    savedir = './res_fit/'
+    savedir = './res_fit_alpha_fit/'
 
     x_opt = []
     LSE = 99999
@@ -2505,8 +2504,8 @@ def test():
     samples, samples_idx = ec_moment.gen_samples(num_samples=int(num_samples))
 
     import scipy.io as sio
-    fig5 = sio.loadmat("FIG5_DRL.mat")
-    fig5_betas = sio.loadmat("FIG5_DRL_betas.mat")
+    fig5 = sio.loadmat("./measured_neurons/dabney_matlab/dabney_fit.mat")
+    fig5_betas = sio.loadmat("./measured_neurons/dabney_matlab/dabney_utility_fit.mat")
     zero_crossings = fig5['zeroCrossings_all'][:, 0]
     scaleFactNeg_all = fig5['scaleFactNeg_all'][:, 0]
     scaleFactPos_all = fig5['scaleFactPos_all'][:, 0]
@@ -2522,7 +2521,7 @@ def test():
     zero_crossings_ = fig5['zeroCrossings_all'][:, 0]
     zero_crossings_ = zero_crossings_[idx_to_maintain]
     zero_crossings_ = zero_crossings_[idx_sorted]
-    zero_crossings_estimated = ZC_estimator(zero_crossings_)
+    zero_crossings_estimated = ZC_estimator(zero_crossings_) # estimated thresholds
 
     fig, ax = plt.subplots(1,1)
     # RPs = get_quantiles_RPs(ec_moment, quantiles_constant)
