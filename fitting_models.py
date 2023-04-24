@@ -7,9 +7,13 @@ import seaborn as sns
 import time
 import scipy.io as sio
 import scipy
-from scipy.optimize import minimize
+from scipy.optimize import minimize, curve_fit
 
 # efficient coding using sigmoid response functions
+
+N_neurons = 39
+R_t = 245.41
+slope_scale = 5.07
 
 
 class value_efficient_coding_moment:
@@ -36,26 +40,17 @@ class value_efficient_coding_moment:
         p_thresh = (2 * np.arange(N_neurons) + 1) / N_neurons / 2
 
         if simpler:  # to boost computation
-            self.x = np.linspace(0, 30, num=int(1e3))
-            self.x_inf = np.linspace(0, 300, num=int(1e4))
+            self.x = np.linspace(np.finfo(float).eps, 30, num=int(1e3))
+            self.x_inf = np.linspace(np.finfo(float).eps, 300, num=int(1e4))
         else:
-            self.x = np.linspace(0, 30, num=int(1e4))
-            self.x_inf = np.linspace(0, 300, num=int(1e5))
+            self.x = np.linspace(np.finfo(float).eps, 30, num=int(1e4))
+            self.x_inf = np.linspace(np.finfo(float).eps, 300, num=int(1e5))
         self.x_log = np.log(self.x)  # np.linspace(-5, 5, num=int(1e3))
         # np.linspace(-50, 50, num=int(1e4))
         self.x_log_inf = np.log(self.x_inf)
 
         self._x_gap = self.x[1] - self.x[0]
         self.x_minmax = [0, 21]
-
-        # logarithm space
-        logmu = np.sum(np.log(self.juice_magnitudes) * self.juice_prob)
-        logsd = np.sqrt(
-            np.sum(((np.log(self.juice_magnitudes) - logmu) ** 2) * self.juice_prob)
-        )
-
-        self.p_prior = lognorm.pdf(self.x, s=logsd, scale=np.exp(logmu))
-        self.p_prior_inf = lognorm.pdf(self.x_inf, s=logsd, scale=np.exp(logmu))
 
         self.p_prior = lognorm.pdf(self.x, s=0.71, scale=np.exp(1.289))
         self.p_prior_inf = lognorm.pdf(self.x_inf, s=0.71, scale=np.exp(1.289))
@@ -170,8 +165,6 @@ class value_efficient_coding_moment:
         for i in range(len(self.neurons_)):
             self.neurons_[i] *= NRMLZR_G
             self.gsn[i] *= NRMLZR_G
-
-        # normalize afterward
         NRMLZR_G_pseudo = self.R / np.sum(
             np.array(self.neurons_pseudo_) * self.p_prior_pseudo * self._x_gap
         )
@@ -195,8 +188,6 @@ class value_efficient_coding_moment:
         return RPs
 
     def initial_dabney(self):
-        import scipy.io as sio
-
         fig5 = sio.loadmat("./measured_neurons/dabney_matlab/dabney_fit.mat")
         fig5_betas = sio.loadmat(
             "./measured_neurons/dabney_matlab/dabney_utility_fit.mat"
@@ -455,8 +446,6 @@ class value_efficient_coding_moment:
         else:
             r_stars = np.copy(self.gsn_pseudo) / 2
 
-        from scipy.optimize import curve_fit
-
         def func(rp, offset):
             return lambda x, a: a * (x - rp) + offset
 
@@ -532,8 +521,6 @@ class value_efficient_coding_moment:
         # r_star = r_star_param
         # cal r-star
         # r_star = r_star_param
-
-        from scipy.optimize import curve_fit
 
         def func(rp, offset):
             return lambda x, a: a * (x - rp) + offset
@@ -611,28 +598,24 @@ class value_efficient_coding_moment:
         y_s = []
         return quantiles, theta_s, alpha_s, x_s, y_s
 
-    def plot_approximate_kinky_fromsim_fitting_only_raw_rstar(
-        self, neurons, name, r_star_param, num_samples=int(1e4)
-    ):
-        # cal r-star
-        # r_star = r_star_param
-        # cal r-star
-        # r_star = r_star_param
-
-        from scipy.optimize import curve_fit
-
-        def func(rp, offset):
-            return lambda x, a: a * (x - rp) + offset
-
+    def get_thresholds(self, r_star):
         # get threshold for each neuron
         thresholds = []
         thresholds_idx = []
         for i in range(self.N):
-            r_star = r_star_param[i]
-            hn = neurons[i]
+            hn = self.neurons_[i]
             ind = np.argmin(abs(hn - r_star))
-            thresholds.append(self.x[ind])
             thresholds_idx.append(ind)
+            thresholds.append(np.interp(r_star, self.neurons_[i], self.x))
+        return thresholds, thresholds_idx
+
+    def plot_approximate_kinky_fromsim_fitting_only_raw_rstar(
+        self, r_star, num_samples=int(1e5)
+    ):
+        def func(rp, offset):
+            return lambda x, a: a * (x - rp) + offset
+
+        thresholds, thresholds_idx = self.get_thresholds(r_star)
 
         alpha_plus = []
         alpha_minus = []
@@ -640,55 +623,42 @@ class value_efficient_coding_moment:
         num_samples_yours = [num_samples] * self.N
         for i in range(self.N):
             # check it before
-            while not np.all(
-                int(num_samples_yours[i] * self.cum_P_pseudo[thresholds_idx[i]])
-            ):
-                num_samples_yours[i] *= 10
-                if num_samples_yours[i] > 1e6:
-                    return False, 0, 0, 0, 0, 0
-
-            while not np.all(
-                int(num_samples_yours[i] * (1 - self.cum_P_pseudo[thresholds_idx[i]]))
-            ):
-                num_samples_yours[i] *= 10
-                if num_samples_yours[i] > 1e6:
-                    return False, 0, 0, 0, 0, 0
-
-            sample_neg = []
-            R_neg = []
-            for s_id in range(
-                int(num_samples_yours[i] * self.cum_P_pseudo[thresholds_idx[i]])
-            ):
-                rand_neg = np.random.choice(
-                    np.arange(0, thresholds_idx[i]),
-                    p=self.p_prior_inf[: thresholds_idx[i]]
-                    / np.sum(self.p_prior_inf[: thresholds_idx[i]]),
-                )
-                sample_neg.append(self.x[rand_neg])
-                R_neg.append(self.neurons_[i][rand_neg])
-            sample_pos = []
-            R_pos = []
-            for s_id in range(
-                int(num_samples_yours[i] * (1 - self.cum_P_pseudo[thresholds_idx[i]]))
-            ):
-                rand_pos = np.random.choice(
-                    np.arange(thresholds_idx[i], len(self.x)),
-                    p=self.p_prior_inf[thresholds_idx[i], :]
-                    / np.sum(self.p_prior_inf[thresholds_idx[i], :]),
-                )
-                sample_pos.append(self.x[rand_pos])
-                R_pos.append(self.neurons_[i][rand_pos])
+            p = self.p_prior_inf[: thresholds_idx[i]] + np.finfo(float).eps
+            rand_neg = np.random.choice(
+                np.arange(0, thresholds_idx[i]),
+                p=p / np.sum(p),
+                size=int(
+                    np.ceil(num_samples_yours[i] * self.cum_P_pseudo[thresholds_idx[i]])
+                ),
+            )
+            sample_neg = self.x[rand_neg]
+            R_neg = self.neurons_[i][rand_neg]
+            p = self.p_prior_inf[thresholds_idx[i] :] + np.finfo(float).eps
+            rand_pos = np.random.choice(
+                np.arange(thresholds_idx[i], len(self.x)),
+                p=p / np.sum(p),
+                size=int(
+                    np.ceil(
+                        num_samples_yours[i]
+                        * (1 - self.cum_P_pseudo[thresholds_idx[i]])
+                    )
+                ),
+            )
+            sample_pos = self.x[rand_pos]
+            R_pos = self.neurons_[i][rand_pos]
             neg_idx = np.argsort(sample_neg)
             popt_v1_minus, _ = curve_fit(
                 func(self.x[thresholds_idx[i]], r_star),
                 np.array(sample_neg)[neg_idx],
                 np.array(R_neg)[neg_idx],
+                sigma=np.sqrt(np.array(R_neg)[neg_idx] + np.finfo(float).eps),
             )
             pos_idx = np.argsort(sample_pos)
             popt_v1_plus, _ = curve_fit(
                 func(self.x[thresholds_idx[i]], r_star),
                 np.array(sample_pos)[pos_idx],
                 np.array(R_pos)[pos_idx],
+                sigma=np.sqrt(np.array(R_pos)[pos_idx] + np.finfo(float).eps),
             )
 
             alpha_minus.append(*popt_v1_minus)
@@ -718,8 +688,6 @@ class value_efficient_coding_moment:
             r_star = np.min(res_max) * r_star_param
         else:
             r_stars = np.copy(self.gsn_pseudo) / 2
-
-        from scipy.optimize import curve_fit
 
         def func(rp, offset):
             return lambda x, a: a * (x - rp) + offset
@@ -802,8 +770,6 @@ class value_efficient_coding_moment:
             r_star = np.min(res_max) * 0.8
         else:
             r_stars = np.copy(self.gsn_pseudo) / 2
-
-        from scipy.optimize import curve_fit
 
         def func(rp, offset):
             return lambda x, a: a * (x - rp) + offset
@@ -1152,7 +1118,6 @@ class value_efficient_coding_moment:
         # plt.plot(self.x[:ind30], self.g_x[:ind30])
         # plt.savefig('./' + name + '/' + 'Gain function.png')
 
-    # def
     def replace_with_pseudo(self):
         self.sn = self.sn_pseudo
         self.neurons_ = self.neurons_pseudo_
@@ -1522,8 +1487,6 @@ class value_dist_rl(value_efficient_coding_moment):
             sum_pdf += temp_ / np.max(temp_) * self.juice_prob[i]
 
         self.p_prior_inf = sum_pdf / np.sum(sum_pdf * self._x_gap)
-
-        import pickle as pkl
 
         with open("lognormal_params.pkl", "rb") as f:
             param = pkl.load(f)
@@ -1975,7 +1938,7 @@ def neuron_neuron_offset(ec, neuron, start_offset, maxval=118.0502):
 
 
 class value_efficient_coding_fitting_sd(value_efficient_coding_moment):
-    def __init__(self, prior="normal", N_neurons=18, R_t=247.0690, XX2=1.0):
+    def __init__(self, N_neurons=18, R_t=247.0690, XX2=1.0):
         # real data prior
         self.offset = 0
         self.juice_magnitudes = np.array([0.1, 0.3, 1.2, 2.5, 5, 10, 20]) + self.offset
@@ -2226,24 +2189,22 @@ class fitting_model_model:
         return RPs
 
     def neuron_R_fit_timesG_fixedR_paramLog(self, XX):
-        # bound
-        if XX[0] <= 0.01:
-            XX[0] = 0.01
-        if XX[0] > 1:
-            XX[0] = 1
-        # bound
-        if XX[1] <= 0.01:
-            XX[1] = 0.01
-        if XX[1] > 50:
-            XX[1] = 50
-
+        """XX = [alpha, r_star]?"""
         print(XX)
+        # bound
+        if XX[0] <= 0.01 or XX[0] > 1:
+            print(1e10)
+            return 1e10
+        # bound
+        if XX[1] <= 0.01 or XX[1] > 50:
+            print(1e10)
+            return 1e10
+
         fit_ = value_efficient_coding_moment(
-            "./",
             N_neurons=self.fit_.N,
             R_t=self.fit_.R,
             X_OPT_ALPH=XX[0],
-            slope_scale=5.07,
+            slope_scale=slope_scale,
         )
         fit_.replace_with_pseudo()
 
@@ -2252,64 +2213,29 @@ class fitting_model_model:
         for i in range(len(fit_.neurons_)):
             res_max.append(np.max(fit_.neurons_[i]))
             res_min.append(np.min(fit_.neurons_[i]))
-        g_x_rstar = []
-        for i in range(len(fit_.neurons_)):
-            g_x_rstar.append(XX[1])
+        g_x_rstar = XX[1]
 
         # check if the g_x_rstar passes every data points
         check_ = []
         for i in range(len(fit_.neurons_)):
-            check_.append(np.any(g_x_rstar[i] <= fit_.neurons_[i]))
-
-        num_samples = int(1e3)
-        # # check if there is any data that falls into the invalid range defined by g_x_rstar
-        check_2 = []
-        check_3 = []
-        for i in range(len(fit_.neurons_)):
-            temp_threshold = np.argmin(np.abs(fit_.neurons_[i] - g_x_rstar[i]))
-            check_2.append(
-                np.all(
-                    [len(fit_.x[:temp_threshold]) > 1, len(fit_.x[temp_threshold:]) > 1]
-                )
-            )
-            check_3.append(int(num_samples * fit_.cum_P_pseudo[temp_threshold]))
-
-        def func(rp, offset):
-            return lambda x, a: a * (x - rp) + offset
+            check_.append(np.any(g_x_rstar <= fit_.neurons_[i]))
 
         if not np.all(check_):
+            print(1e10)
             return 1e10  # just end here
 
-        if not np.all(check_2):
-            return 1e10  # just end here
-
-        (
-            tof,
-            quantiles_constant,
-            thresholds_constant,
-            alphas,
-            xs,
-            ys,
-        ) = fit_.plot_approximate_kinky_fromsim_fitting_only_raw_rstar(
-            fit_.neurons_,
-            self.dir_save_figures,
-            r_star_param=g_x_rstar,
-            num_samples=num_samples,
+        thresholds, _ = fit_.get_thresholds(
+            r_star=g_x_rstar,
         )
 
-        if tof:
-            loss_1 = np.log(
-                np.mean(
-                    np.sum(
-                        (np.array(thresholds_constant) - np.array(self.Dabneys[1])) ** 2
-                    )
-                )
+        loss_1 = np.log(
+            np.mean(
+                (np.sort(np.array(thresholds)) - np.sort(np.array(self.Dabneys[1])))
+                ** 2
             )
-            print(loss_1)
-            return loss_1
-        else:
-            print(1e10)
-            return 1e10
+        )
+        print(loss_1)
+        return loss_1
 
     def neuron_R_fit_fixed_rstar(self, XX):
         fit_ = value_efficient_coding_moment(N_neurons=39, R_t=XX)
@@ -2444,8 +2370,6 @@ def main():
     LSE_s = []
     x_opt_s = []
 
-    import pickle as pkl
-
     for ii in range(10):
         with open(savedir + "res_fit{0}.pkl".format(ii), "rb") as f:
             data_1 = pkl.load(f)
@@ -2458,63 +2382,50 @@ def main():
 
     id = np.argmin(LSE_s)
 
-    N_neurons = 39
-    R_t = 245.41
-    dir_save_figures = "./"
+    dir_save_figures = "figures/fit_model/"
     print("Initiailze efficient coding part")
     ec = value_efficient_coding_moment(
-        dir_save_figures,
         N_neurons=N_neurons,
         R_t=R_t,
         X_OPT_ALPH=x_opt_s[id],
-        slope_scale=5.07,
+        slope_scale=slope_scale,
     )
     ec.replace_with_pseudo()
 
     # curve fitting part
     fit_class = fitting_model_model(dir_save_figures, [], ec, x_opt_s[id])
 
-    num_seed = 10
-    XX0 = np.linspace(0, 1, num_seed).tolist()
-    XX1 = np.linspace(1, 10, num_seed).tolist()
+    num_seed = 5
+    XX0 = np.linspace(0.02, 0.99, num_seed).tolist()
+    XX1 = np.linspace(1.5, 15, num_seed).tolist()
 
+    # make paramters using meshgrid
+    XX = np.array(np.meshgrid(XX0, XX1)).T.reshape(-1, 2)
     savedir = "res_fit_alpha_fit/"
     if not os.path.exists(savedir):
         os.makedirs(savedir)
-
-    # ii = int(sys.argv[1])
-    ii = 0
-    # if True:
-    if not os.path.exists(
-        savedir + "res_fit_apprx_freealpha_freebeta_lognormal{0}.pkl".format(ii)
-    ):
-        if True:
-            # make combination of XX0 and XX1
-
-            # make paramters using meshgrid
-            XX = np.array(np.meshgrid(XX0, XX1)).T.reshape(-1, 2)
-
+    for ij in range(num_seed**2):
+        if not os.path.exists(
+            savedir + "res_fit_apprx_freealpha_freebeta_lognormal{0}.pkl".format(ij)
+        ):
             # parameter seeds
-            print(ii)
+            print("starting fit " + str(ij))
+            print(XX[ij])
             t0 = time.time()
-            res_s = []
-            for ii in range(len(XX)):
-                XX_ = XX[ii]
-                res = minimize(
-                    fit_class.neuron_R_fit_timesG_fixedR_paramLog,
-                    XX_,
-                    options={"maxiter": 1e5, "disp": True},
-                )
-                res_s.append(res)
-                t1 = time.time()
-                print("!!!!! {}s !!!!!".format(t1 - t0))
+            res = minimize(
+                fit_class.neuron_R_fit_timesG_fixedR_paramLog,
+                XX[ij],
+                options={"maxiter": 1e5, "disp": True},
+            )
+            t1 = time.time()
+            print("!!!!! {}s !!!!!".format(t1 - t0))
 
-                with open(
-                    savedir
-                    + "res_fit_apprx_freealpha_freebeta_lognormal{0}.pkl".format(ii),
-                    "wb",
-                ) as f:
-                    pkl.dump({"res_s": res_s}, f)
+            with open(
+                savedir
+                + "res_fit_apprx_freealpha_freebeta_lognormal{0}.pkl".format(ij),
+                "wb",
+            ) as f:
+                pkl.dump({"res": res}, f)
 
 
 def load_matlab(filename):
@@ -2569,8 +2480,6 @@ class statistics_:
             sum_pdf += temp_ / np.max(temp_) * self.juice_prob[i]
 
         self.p_prior_inf = sum_pdf / np.sum(sum_pdf * self._x_gap)
-
-        import pickle as pkl
 
         with open("lognormal_params.pkl", "rb") as f:
             param = pkl.load(f)
@@ -2644,7 +2553,7 @@ def test():
     print(xss[id])
 
     ec_moment = value_efficient_coding_moment(
-        "./", N_neurons=39, R_t=245.41, X_OPT_ALPH=0.7665, slope_scale=5.07
+        N_neurons=39, R_t=245.41, X_OPT_ALPH=0.7665, slope_scale=5.07
     )
 
     ec_moment.replace_with_pseudo()
@@ -2754,7 +2663,7 @@ def test():
 
     R_t = 245.41
     ec = value_efficient_coding_moment(
-        "./", N_neurons=N_neurons, R_t=R_t, X_OPT_ALPH=0.7665, slope_scale=5.07
+        N_neurons=N_neurons, R_t=R_t, X_OPT_ALPH=0.7665, slope_scale=5.07
     )
     ec.replace_with_pseudo()
 
@@ -2826,7 +2735,6 @@ def test():
     fig4, ax4 = plt.subplots(1, 1)
     idx_sorted_ = np.argsort(asymM_all_save)
     # ax4.scatter(zero_crossings_estimated,  param_set[1][:, 1][idx_sorted_], s=10, color=[0,0,0])
-    from scipy.optimize import curve_fit
 
     hires_x = np.linspace(0, 15, 1000)
 
@@ -2852,7 +2760,7 @@ def test():
     #                  color = 'black', alpha = 0.15)
     for count, R in enumerate(np.sort(RSUM_all)):
         ec = value_efficient_coding_moment(
-            "./", N_neurons=N_neurons, R_t=R, X_OPT_ALPH=0.7665, slope_scale=5.07
+            N_neurons=N_neurons, R_t=R, X_OPT_ALPH=0.7665, slope_scale=5.07
         )
         ec.replace_with_pseudo()
 
@@ -2885,5 +2793,5 @@ def test():
 
 
 if __name__ == "__main__":
-    main()
+    # main()
     test()
