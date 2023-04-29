@@ -16,9 +16,85 @@ R_t = 245.41
 slope_scale = 5.07
 
 
+def sigmoid_func_l(x, a, b, c):
+    # numerically unstable non log:
+    # return b / (1 + np.exp(-(x - c) * a))
+    return np.log(b) - np.logaddexp(0, -(x - c) * a)  # log(1+exp(-(x - c) * a))
+
+
+# first derivative of the sigmoid function
+def first_derivative_sigmoid_func(x, a, b, c):
+    # numerically unstable:
+    # return a * b * np.exp(-a * (x - c)) / (1 + np.exp(-a * (x - c))) ** 2
+    return a * b * np.exp(-a * (x - c) - 2 * np.logaddexp(0, -(x - c) * a))
+
+
+def grad_sigmoid_func(x, a, b, c):
+    # now for log:
+    g_a = (x - c) * np.exp(-np.logaddexp(0, -(x - c) * a) - ((x - c) * a))
+    g_b = np.ones_like(x) / b
+    g_c = -a * np.exp(-np.logaddexp(0, -(x - c) * a) - (x - c) * a)
+    grad = np.stack([g_a, g_b, g_c])
+    return grad
+
+
+def poisson_lik(y, y_pred_l):
+    # returns the poisson log-likelihood(s) for data y and prediction y_pred
+    # and its derivative for optimization
+    y_pred = np.exp(y_pred_l)
+    lik = y_pred_l * y - y_pred  # - gammaln(y+1) depends only on y
+    lik_d = y - y_pred
+    return lik, lik_d
+
+
+def poisson_lik_sig(y, x, a, b, c, w=None):
+    # poisson likelihood for data y and a sigmoid with parameters a, b, c
+    y_pred_l = sigmoid_func_l(x, a, b, c)
+    lik, lik_d = poisson_lik(y, y_pred_l)
+    grad = grad_sigmoid_func(x, a, b, c)
+    for i in range(lik.ndim - 1):
+        grad = np.expand_dims(grad, -1)
+    if w is None:
+        lik_sum = np.sum(lik)
+        lik_grad = grad * lik_d
+    else:
+        lik_sum = np.sum(w * lik)
+        lik_grad = w * grad * lik_d
+    for i in range(lik.ndim):
+        lik_grad = np.sum(lik_grad, -1)
+    return -lik_sum, -lik_grad
+
+
+def fit_sigmoid(x, y, x_init=None, w=None):
+    if x_init is None:
+        x_init = np.array((1, 10, 1))
+
+    def f(par):
+        return poisson_lik_sig(y, x, par[0], par[1], par[2], w=w)
+
+    res = minimize(
+        f,
+        x_init,
+        jac=True,
+        bounds=(
+            [
+                (np.finfo(float).eps, None),
+                (np.finfo(float).eps, None),
+                (np.finfo(float).eps, None),
+            ]
+        ),
+    )
+    return res.x, res.fun
+
+
 class value_efficient_coding_moment:
     def __init__(
-        self, N_neurons=18, R_t=247.0690, X_OPT_ALPH=1.0, slope_scale=4, simpler=False
+        self,
+        N_neurons=18,
+        R_t=247.0690,
+        X_OPT_ALPH=1.0,
+        slope_scale=slope_scale,
+        simpler=False,
     ):
         # real data prior
         self.offset = 0
@@ -623,7 +699,7 @@ class value_efficient_coding_moment:
         num_samples_yours = [num_samples] * self.N
         for i in range(self.N):
             # check it before
-            p = self.p_prior_inf[: thresholds_idx[i]] + np.finfo(float).eps
+            p = self.p_prior[: thresholds_idx[i]] + np.finfo(float).eps
             rand_neg = np.random.choice(
                 np.arange(0, thresholds_idx[i]),
                 p=p / np.sum(p),
@@ -633,7 +709,7 @@ class value_efficient_coding_moment:
             )
             sample_neg = self.x[rand_neg]
             R_neg = self.neurons_[i][rand_neg]
-            p = self.p_prior_inf[thresholds_idx[i] :] + np.finfo(float).eps
+            p = self.p_prior[thresholds_idx[i] :] + np.finfo(float).eps
             rand_pos = np.random.choice(
                 np.arange(thresholds_idx[i], len(self.x)),
                 p=p / np.sum(p),
@@ -2569,7 +2645,7 @@ def test():
         xs,
         ys,
     ) = ec_moment.plot_approximate_kinky_fromsim_fitting_only_raw_rstar(
-        ec_moment.neurons_, ".", r_star_param=g_x_rstar, num_samples=int(1e4)
+        r_star_param=g_x_rstar, num_samples=int(1e4)
     )
 
     print("thresholds")
@@ -2680,7 +2756,7 @@ def test():
         xs,
         ys,
     ) = ec.plot_approximate_kinky_fromsim_fitting_only_raw_rstar(
-        ec.neurons_, ".", r_star_param=g_x_rstar, num_samples=int(1e4)
+        r_star_param=g_x_rstar, num_samples=int(1e4)
     )
 
     # RPs = ec.get_quantiles_RPs(quantiles_constant)
@@ -2793,5 +2869,5 @@ def test():
 
 
 if __name__ == "__main__":
-    # main()
-    test()
+    main()
+    # test()
