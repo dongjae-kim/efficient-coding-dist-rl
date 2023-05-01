@@ -594,6 +594,7 @@ class value_efficient_coding_moment():
             sample_neg = []
             R_neg = []
             for s_id in range(int(num_samples_yours[i] * self.cum_P_pseudo[thresholds_idx[i]])):
+                # interpolate self.p_prior_inf[:thresholds_idx[i]] / np.sum(self.p_prior_inf[:thresholds_idx[i]]), and np.arange(0, thresholds_idx[i])
                 rand_neg = np.random.choice(np.arange(0, thresholds_idx[i]), p=self.p_prior_inf[:thresholds_idx[i]] / np.sum(self.p_prior_inf[:thresholds_idx[i]]))
                 sample_neg.append(self.x[rand_neg])
                 R_neg.append(self.neurons_[i][rand_neg])
@@ -2075,9 +2076,9 @@ class fitting_model_model():
             self.dir_save_figures, r_star_param=g_x_rstar, num_samples= num_samples)
 
         if tof:
-            RPs = self.get_quantiles_RPs(fit_, quantiles_constant)
-            loss_rp = np.log(np.mean(np.sum((np.array(thresholds_constant) - np.array(RPs)) ** 2)))
-            loss_1 = np.log(np.mean(np.sum((np.array(thresholds_constant)-np.array(self.Dabneys[1]))**2)))
+            # RPs = self.get_quantiles_RPs(fit_, quantiles_constant)
+            # loss_rp = np.log(np.mean(np.sum((np.array(thresholds_constant) - np.array(RPs)) ** 2)))
+            loss_1 = np.log(np.mean(np.sum((np.sort(np.array(thresholds_constant))-np.sort(np.array(self.Dabneys[1])) )**2)))
             print(loss_1)
             return loss_1
         else:
@@ -2258,8 +2259,8 @@ def main():
     max_total = 1000
     # ii = int(sys.argv[1])
     ii = 0
-    # if True:
-    if not os.path.exists(savedir + 'res_fit_apprx_freealpha_freebeta_lognormal{0}.pkl'.format(ii)):
+    if True:
+    # if not os.path.exists(savedir + 'res_fit_apprx_freealpha_freebeta_lognormal{0}.pkl'.format(ii)):
         if True:
 
             # make combination of XX0 and XX1
