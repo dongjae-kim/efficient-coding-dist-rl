@@ -87,6 +87,41 @@ def fit_sigmoid(x, y, x_init=None, w=None):
     return res.x, res.fun
 
 
+def check_grad(pars=np.array([1, 10, 1]), delta=0.00001):
+    # check gradient:
+    def f(par):
+        return poisson_lik_sig(y, x, par[0], par[1], par[2], w=None)
+
+    x = np.linspace(-5, 5, 11)
+    y = np.random.poisson(np.exp(sigmoid_func_l(x, 1, 10, 1)))
+    y0, g = f(pars)
+    y1, _ = f(pars + np.array([delta, 0, 0]))
+    y2, _ = f(pars + np.array([0, delta, 0]))
+    y3, _ = f(pars + np.array([0, 0, delta]))
+
+    print((y1 - y0) / g[0] / delta)
+    print((y2 - y0) / g[1] / delta)
+    print((y3 - y0) / g[2] / delta)
+
+    y_pred_l = sigmoid_func_l(x, pars[0], pars[1], pars[2])
+    lik, lik_d = poisson_lik(y, y_pred_l)
+    y_pred_l1 = y_pred_l
+    y_pred_l1[0] += delta
+    lik1, _ = poisson_lik(y, y_pred_l)
+
+    print((lik1 - lik) / lik_d[0] / delta)
+
+    a, b, c = pars
+    grad = grad_sigmoid_func(x, a, b, c)
+    s = sigmoid_func_l(x, a, b, c)
+    s1 = sigmoid_func_l(x, a + delta, b, c)
+    s2 = sigmoid_func_l(x, a, b + delta, c)
+    s3 = sigmoid_func_l(x, a, b, c + delta)
+    print((s1 - s) / grad[0] / delta)
+    print((s2 - s) / grad[1] / delta)
+    print((s3 - s) / grad[2] / delta)
+
+
 class value_efficient_coding_moment:
     def __init__(
         self,
