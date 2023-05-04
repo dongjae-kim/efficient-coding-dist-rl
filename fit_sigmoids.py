@@ -119,69 +119,15 @@ def check_grad(pars=np.array([1, 10, 1]), delta=0.00001):
     print((s3 - s) / grad[2] / delta)
 
 
-# simple fits:
-juiceAmounts = [0.1, 0.3, 1.2, 2.5, 5, 10, 20]
-dat = sio.loadmat("measured_neurons/dat_eachneuron.mat")
-dat = dat["dat"]
-initial_guess = [1, 1, 0]
+if __name__ == "__main__":
+    # simple fits:
+    juiceAmounts = [0.1, 0.3, 1.2, 2.5, 5, 10, 20]
+    dat = sio.loadmat("measured_neurons/dat_eachneuron.mat")
+    dat = dat["dat"]
+    initial_guess = [1, 1, 0]
 
-ps = np.zeros((40, 3))
-for i in tqdm.trange(40):
-    dats = dat[0, i][0]
-    datas_x = []
-    datas_y = []
-
-    for count, j in enumerate(juiceAmounts):
-        y_to_extend = np.squeeze(dats[np.where(~np.isnan(dats[:, count])), count])
-        x_to_extend = (np.ones(y_to_extend.shape) * j).tolist()
-        datas_x.extend(x_to_extend)
-        datas_y.extend(y_to_extend)
-
-    x = np.array(datas_x)
-    y = np.array(datas_y)
-    pars, lik = fit_sigmoid(x, y, x_init=initial_guess)
-    ps[i, :] = np.array(pars)
-
-sio.savemat("curve_fit_parameters.mat", {"ps": ps})
-
-
-# Bootstrapping trials
-num_sim = int(5e3)
-
-ps = np.zeros((40, num_sim, 3))
-for i in tqdm.trange(40):
-    dats = dat[0, i][0]
-    datas_x = []
-    datas_y = []
-
-    for count, j in enumerate(juiceAmounts):
-        y_to_extend = np.squeeze(dats[np.where(~np.isnan(dats[:, count])), count])
-        x_to_extend = (np.ones(y_to_extend.shape) * j).tolist()
-        datas_x.extend(x_to_extend)
-        datas_y.extend(y_to_extend)
-
-    x = np.array(datas_x)
-    y = np.array(datas_y)
-
-    for simi in range(num_sim):
-        i_sample = np.random.choice(
-            np.linspace(0, len(x) - 1, len(x), dtype=np.int16), len(x)
-        )
-        x_ = x[i_sample]
-        y_ = y[i_sample]
-        pars, lik = fit_sigmoid(x_, y_, x_init=initial_guess)
-        ps[i, simi, :] = np.array(pars)
-
-
-sio.savemat(
-    "curve_fit_bootstrap.mat", {"ps": ps}
-)  # post fix '_new' to prevent overwriting
-
-# Bootstrapping trials & neurons
-ps = np.zeros((40, num_sim, 3))
-for simi in tqdm.trange(num_sim):
-    n_sample = np.random.choice(np.linspace(0, 39, dtype=np.int16), 40)  # neuron sample
-    for count_n, i in enumerate(n_sample):
+    ps = np.zeros((40, 3))
+    for i in tqdm.trange(40):
         dats = dat[0, i][0]
         datas_x = []
         datas_y = []
@@ -192,20 +138,77 @@ for simi in tqdm.trange(num_sim):
             datas_x.extend(x_to_extend)
             datas_y.extend(y_to_extend)
 
-        x = datas_x
-        y = datas_y
+        x = np.array(datas_x)
+        y = np.array(datas_y)
+        pars, lik = fit_sigmoid(x, y, x_init=initial_guess)
+        ps[i, :] = np.array(pars)
 
-        i_sample = np.random.choice(
-            np.linspace(0, len(x) - 1, len(x), dtype=np.int16), len(x)
-        )
-        x_ = np.array(x)[i_sample]
-        y_ = np.array(y)[i_sample]
+    sio.savemat("curve_fit_parameters.mat", {"ps": ps})
 
-        pars, lik = fit_sigmoid(x_, y_, x_init=initial_guess)
+    # Bootstrapping trials
+    num_sim = int(5e3)
 
-        ps[count_n, simi, :] = np.array(pars)
-        # print('neuron {} simulation {}'.format(count_n, simi))
+    ps = np.zeros((40, num_sim, 3))
+    for i in tqdm.trange(40):
+        dats = dat[0, i][0]
+        datas_x = []
+        datas_y = []
 
-sio.savemat(
-    "curve_fit_bootstrap_neurons.mat", {"ps": ps}
-)  # post fix '_new' to prevent overwriting
+        for count, j in enumerate(juiceAmounts):
+            y_to_extend = np.squeeze(dats[np.where(~np.isnan(dats[:, count])), count])
+            x_to_extend = (np.ones(y_to_extend.shape) * j).tolist()
+            datas_x.extend(x_to_extend)
+            datas_y.extend(y_to_extend)
+
+        x = np.array(datas_x)
+        y = np.array(datas_y)
+
+        for simi in range(num_sim):
+            i_sample = np.random.choice(
+                np.linspace(0, len(x) - 1, len(x), dtype=np.int16), len(x)
+            )
+            x_ = x[i_sample]
+            y_ = y[i_sample]
+            pars, lik = fit_sigmoid(x_, y_, x_init=initial_guess)
+            ps[i, simi, :] = np.array(pars)
+
+    sio.savemat(
+        "curve_fit_bootstrap.mat", {"ps": ps}
+    )  # post fix '_new' to prevent overwriting
+
+    # Bootstrapping trials & neurons
+    ps = np.zeros((40, num_sim, 3))
+    for simi in tqdm.trange(num_sim):
+        n_sample = np.random.choice(
+            np.linspace(0, 39, dtype=np.int16), 40
+        )  # neuron sample
+        for count_n, i in enumerate(n_sample):
+            dats = dat[0, i][0]
+            datas_x = []
+            datas_y = []
+
+            for count, j in enumerate(juiceAmounts):
+                y_to_extend = np.squeeze(
+                    dats[np.where(~np.isnan(dats[:, count])), count]
+                )
+                x_to_extend = (np.ones(y_to_extend.shape) * j).tolist()
+                datas_x.extend(x_to_extend)
+                datas_y.extend(y_to_extend)
+
+            x = datas_x
+            y = datas_y
+
+            i_sample = np.random.choice(
+                np.linspace(0, len(x) - 1, len(x), dtype=np.int16), len(x)
+            )
+            x_ = np.array(x)[i_sample]
+            y_ = np.array(y)[i_sample]
+
+            pars, lik = fit_sigmoid(x_, y_, x_init=initial_guess)
+
+            ps[count_n, simi, :] = np.array(pars)
+            # print('neuron {} simulation {}'.format(count_n, simi))
+
+    sio.savemat(
+        "curve_fit_bootstrap_neurons.mat", {"ps": ps}
+    )  # post fix '_new' to prevent overwriting
