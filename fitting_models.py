@@ -10,8 +10,8 @@ from scipy.optimize import minimize, minimize_scalar
 # efficient coding using sigmoid response functions
 
 N_neurons = 39
-R_t = 245.41
-slope_scale = 5.07
+R_t = 244.97
+slope_scale = 6.954096526721094
 
 
 def get_thresholds(alpha=1, r_star=5, slope_scale=5, N_neurons=39, R_t=245.41):
