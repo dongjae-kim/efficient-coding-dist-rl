@@ -8,6 +8,7 @@ import numpy as np
 import tqdm
 
 np.random.seed(2022)
+juiceAmounts = [0.1, 0.3, 1.2, 2.5, 5, 10, 20]
 
 
 # Fitting functions for sigmoids:
@@ -35,7 +36,7 @@ def grad_sigmoid_func(x, a, b, c):
     return grad
 
 
-def poisson_lik(y, y_pred_l):
+def poisson_lik_l(y, y_pred_l):
     # returns the poisson log-likelihood(s) for data y and prediction y_pred
     # and its derivative for optimization
     y_pred = np.exp(y_pred_l)
@@ -44,10 +45,19 @@ def poisson_lik(y, y_pred_l):
     return lik, lik_d
 
 
+def poisson_lik(y, y_pred):
+    # returns the poisson log-likelihood(s) for data y and prediction y_pred
+    # and its derivative for optimization
+    y_pred_l = np.log(y_pred)
+    lik = y_pred_l * y - y_pred  # - gammaln(y+1) depends only on y
+    lik_d = y - y_pred
+    return lik, lik_d
+
+
 def poisson_lik_sig(y, x, a, b, c, w=None):
     # poisson likelihood for data y and a sigmoid with parameters a, b, c
     y_pred_l = sigmoid_func_l(x, a, b, c)
-    lik, lik_d = poisson_lik(y, y_pred_l)
+    lik, lik_d = poisson_lik_l(y, y_pred_l)
     grad = grad_sigmoid_func(x, a, b, c)
     for i in range(lik.ndim - 1):
         grad = np.expand_dims(grad, -1)
@@ -75,9 +85,9 @@ def fit_sigmoid(x, y, x_init=None, w=None):
         jac=True,
         bounds=(
             [
-                (np.finfo(float).eps, 2),
+                (np.finfo(float).eps, 3),
                 (np.finfo(float).eps, 100),
-                (np.finfo(float).eps, 30),
+                (0.01, 20),  # range of juice rewards
             ]
         ),
     )
@@ -101,10 +111,10 @@ def check_grad(pars=np.array([1, 10, 1]), delta=0.00001):
     print((y3 - y0) / g[2] / delta)
 
     y_pred_l = sigmoid_func_l(x, pars[0], pars[1], pars[2])
-    lik, lik_d = poisson_lik(y, y_pred_l)
+    lik, lik_d = poisson_lik_l(y, y_pred_l)
     y_pred_l1 = y_pred_l
     y_pred_l1[0] += delta
-    lik1, _ = poisson_lik(y, y_pred_l)
+    lik1, _ = poisson_lik_l(y, y_pred_l)
 
     print((lik1 - lik) / lik_d[0] / delta)
 
@@ -119,49 +129,56 @@ def check_grad(pars=np.array([1, 10, 1]), delta=0.00001):
     print((s3 - s) / grad[2] / delta)
 
 
-if __name__ == "__main__":
-    # simple fits:
-    juiceAmounts = [0.1, 0.3, 1.2, 2.5, 5, 10, 20]
+def extract_data(dat, i, juiceAmounts=juiceAmounts):
+    dats = dat[0, i][0]
+    datas_x = []
+    datas_y = []
+
+    for count, j in enumerate(juiceAmounts):
+        y_to_extend = np.squeeze(dats[np.where(~np.isnan(dats[:, count])), count])
+        x_to_extend = (np.ones(y_to_extend.shape) * j).tolist()
+        datas_x.extend(x_to_extend)
+        datas_y.extend(y_to_extend)
+
+    x = np.array(datas_x)
+    y = np.array(datas_y)
+    return x, y
+
+
+def load_all_data():
     dat = sio.loadmat("measured_neurons/dat_eachneuron.mat")
     dat = dat["dat"]
+    data = [extract_data(dat, i) for i in range(dat.shape[1])]
+    return data
+
+
+if __name__ == "__main__":
+    # simple fits:
+    data = load_all_data()
     initial_guess = [1, 1, 0]
+    remove_min = True
 
     ps = np.zeros((40, 3))
     for i in tqdm.trange(40):
-        dats = dat[0, i][0]
-        datas_x = []
-        datas_y = []
-
-        for count, j in enumerate(juiceAmounts):
-            y_to_extend = np.squeeze(dats[np.where(~np.isnan(dats[:, count])), count])
-            x_to_extend = (np.ones(y_to_extend.shape) * j).tolist()
-            datas_x.extend(x_to_extend)
-            datas_y.extend(y_to_extend)
-
-        x = np.array(datas_x)
-        y = np.array(datas_y)
+        x, y = data[i]
+        if remove_min:
+            y -= np.min(y)
         pars, lik = fit_sigmoid(x, y, x_init=initial_guess)
         ps[i, :] = np.array(pars)
 
-    sio.savemat("curve_fit_parameters.mat", {"ps": ps})
+    if remove_min:
+        sio.savemat("curve_fit_parameters_min.mat", {"ps": ps})
+    else:
+        sio.savemat("curve_fit_parameters.mat", {"ps": ps})
 
     # Bootstrapping trials
     num_sim = int(5e3)
 
     ps = np.zeros((40, num_sim, 3))
     for i in tqdm.trange(40):
-        dats = dat[0, i][0]
-        datas_x = []
-        datas_y = []
-
-        for count, j in enumerate(juiceAmounts):
-            y_to_extend = np.squeeze(dats[np.where(~np.isnan(dats[:, count])), count])
-            x_to_extend = (np.ones(y_to_extend.shape) * j).tolist()
-            datas_x.extend(x_to_extend)
-            datas_y.extend(y_to_extend)
-
-        x = np.array(datas_x)
-        y = np.array(datas_y)
+        x, y = data[i]
+        if remove_min:
+            y -= np.min(y)
 
         for simi in range(num_sim):
             i_sample = np.random.choice(
@@ -172,43 +189,31 @@ if __name__ == "__main__":
             pars, lik = fit_sigmoid(x_, y_, x_init=initial_guess)
             ps[i, simi, :] = np.array(pars)
 
-    sio.savemat(
-        "curve_fit_bootstrap.mat", {"ps": ps}
-    )  # post fix '_new' to prevent overwriting
-
+    if remove_min:
+        sio.savemat("curve_fit_bootstrap_min.mat", {"ps": ps})
+    else:
+        sio.savemat("curve_fit_bootstrap.mat", {"ps": ps})
     # Bootstrapping trials & neurons
     ps = np.zeros((40, num_sim, 3))
     for simi in tqdm.trange(num_sim):
-        n_sample = np.random.choice(
-            np.linspace(0, 39, dtype=np.int16), 40
-        )  # neuron sample
+        n_sample = np.random.choice(np.arange(40, dtype=int))  # neuron sample
         for count_n, i in enumerate(n_sample):
-            dats = dat[0, i][0]
-            datas_x = []
-            datas_y = []
-
-            for count, j in enumerate(juiceAmounts):
-                y_to_extend = np.squeeze(
-                    dats[np.where(~np.isnan(dats[:, count])), count]
-                )
-                x_to_extend = (np.ones(y_to_extend.shape) * j).tolist()
-                datas_x.extend(x_to_extend)
-                datas_y.extend(y_to_extend)
-
-            x = datas_x
-            y = datas_y
+            x, y = data[i]
+            if remove_min:
+                y -= np.min(y)
 
             i_sample = np.random.choice(
                 np.linspace(0, len(x) - 1, len(x), dtype=np.int16), len(x)
             )
-            x_ = np.array(x)[i_sample]
-            y_ = np.array(y)[i_sample]
+            x_ = x[i_sample]
+            y_ = y[i_sample]
 
             pars, lik = fit_sigmoid(x_, y_, x_init=initial_guess)
 
             ps[count_n, simi, :] = np.array(pars)
             # print('neuron {} simulation {}'.format(count_n, simi))
 
-    sio.savemat(
-        "curve_fit_bootstrap_neurons.mat", {"ps": ps}
-    )  # post fix '_new' to prevent overwriting
+    if remove_min:
+        sio.savemat("curve_fit_bootstrap_neurons_min.mat", {"ps": ps})
+    else:
+        sio.savemat("curve_fit_bootstrap_neurons.mat", {"ps": ps})
