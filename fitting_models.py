@@ -6,15 +6,21 @@ import time
 import scipy.io as sio
 import scipy
 from scipy.optimize import minimize, minimize_scalar
+from fit_sigmoids import poisson_lik, load_all_data, fit_sigmoid
 
 # efficient coding using sigmoid response functions
 
 N_neurons = 39
-R_t = 244.97
 slope_scale = 6.954096526721094
+juiceAmounts = [0.1, 0.3, 1.2, 2.5, 5, 10, 20]
+remove_min = True
+if remove_min:
+    R_t = 293.098
+else:
+    R_t = 244.97
 
 
-def get_thresholds(alpha=1, r_star=5, slope_scale=5, N_neurons=39, R_t=245.41):
+def get_thresholds(alpha=1, r_star=5, slope_scale=5, N_neurons=39, R_t=R_t):
     """get threshold for each neuron without creating a whole object"""
     p_thresh = (2 * np.arange(N_neurons) + 1) / N_neurons / 2
     x = np.linspace(np.finfo(float).eps, 100, num=int(1e4))
@@ -50,7 +56,137 @@ def get_thresholds(alpha=1, r_star=5, slope_scale=5, N_neurons=39, R_t=245.41):
     return np.array(thresholds)
 
 
-def squared_error_thresholds(
+def get_threshold_slope(alpha=1, r_star=5, slope_scale=5, N_neurons=39, R_t=R_t):
+    p_thresh = (2 * np.arange(N_neurons) + 1) / N_neurons / 2
+    x = np.linspace(np.finfo(float).eps, 100, num=int(1e4))
+    _x_gap = x[1] - x[0]
+    p_prior = lognorm.pdf(x, s=0.71, scale=np.exp(1.289))
+    p_prior = p_prior / np.sum(p_prior * _x_gap)
+    cum_P = np.cumsum(p_prior)
+    cum_P /= cum_P[-1] + 1e-4
+
+    density = p_prior / (1 - cum_P) ** (1 - alpha)
+    cum_d = np.cumsum(density)
+    cum_d /= cum_d[-1] + 1e-4
+
+    thresh_ = np.interp(p_thresh, cum_d, x)
+    # compute response functions
+    neurons = []  # self.N number of neurons
+    norm_g = 1 / ((1 - cum_P) ** alpha)
+
+    for i in range(N_neurons):
+        g_sn = np.interp(thresh_[i], x, norm_g)
+
+        a = slope_scale * p_thresh[i]
+        b = slope_scale * (1 - p_thresh[i])
+        neurons.append(g_sn * scipy.special.betainc(a, b, cum_d))
+
+    neurons = np.array(neurons)
+    # normalize afterward
+    NRMLZR_G = R_t / np.sum(neurons * p_prior * _x_gap)
+    neurons *= NRMLZR_G
+    thresholds = []
+    for i in range(N_neurons):
+        thresholds.append(np.interp(r_star, neurons[i], x, left=0, right=100))
+    pars = np.zeros((N_neurons, 3))
+    for i_n, neuron in enumerate(neurons):
+        pars[i_n], _ = fit_sigmoid(x, neuron, w=p_prior)
+    return thresholds, pars
+
+
+def get_predicted_responses(r_request, alpha=1, slope_scale=5, N_neurons=39, R_t=R_t):
+    """get responses predicted for each neuron at the requested locations reward values r_request"""
+    p_thresh = (2 * np.arange(N_neurons) + 1) / N_neurons / 2
+    x = np.linspace(np.finfo(float).eps, 100, num=int(1e4))
+    _x_gap = x[1] - x[0]
+    p_prior = lognorm.pdf(x, s=0.71, scale=np.exp(1.289))
+    # p_prior = p_prior / np.sum(p_prior * _x_gap)
+    cum_P = lognorm.cdf(x, s=0.71, scale=np.exp(1.289))
+    # cum_P /= cum_P[-1] + 1e-4
+
+    # density = p_prior / (1 - cum_P) ** (1 - alpha)
+    # cum_d = np.cumsum(density)
+    # cum_d /= cum_d[-1] + 1e-4
+    cum_d = 1 - (1 - cum_P) ** alpha
+
+    thresh_ = np.interp(p_thresh, cum_d, x)
+    # compute response functions
+    neurons = []  # self.N number of neurons
+    norm_g = 1 / ((1 - cum_P) ** alpha)
+
+    for i in range(N_neurons):
+        g_sn = np.interp(thresh_[i], x, norm_g)
+
+        a = slope_scale * p_thresh[i]
+        b = slope_scale * (1 - p_thresh[i])
+        neurons.append(g_sn * scipy.special.betainc(a, b, cum_d))
+
+    neurons = np.array(neurons)
+    # normalize afterward
+    neurons *= R_t / np.sum(neurons * p_prior * _x_gap)
+    predictions = []
+    for i in range(N_neurons):
+        predictions.append(np.interp(r_request, x, neurons[i], left=0))
+    return np.stack(predictions)
+
+
+def get_loss_ml(data, N_neurons=None, R_t=R_t):
+    """log-likelihood loss for given rewards and responses to fit alpha & slope scale"""
+    if N_neurons is None:
+        N_neurons = len(data)
+
+    juiceAmounts_inv = {v: k for k, v in enumerate(juiceAmounts)}
+
+    def loss(pars):
+        if pars[0] <= 0 or pars[0] > 1:
+            return np.inf
+        if pars[1] <= 0.001 or pars[1] > 25:
+            return np.inf
+        responses = get_predicted_responses(
+            juiceAmounts,
+            alpha=pars[0],
+            slope_scale=pars[1],
+            N_neurons=N_neurons,
+            R_t=R_t,
+        )
+        lik = 0
+        for i, d in enumerate(data):
+            l, _ = poisson_lik(
+                d[1], responses[i, [juiceAmounts_inv[d_i] for d_i in d[0]]]
+            )
+            lik += np.sum(l)
+        return -lik
+
+    return loss
+
+
+def get_loss_ml_slope(data, alpha=1, N_neurons=None, R_t=R_t):
+    """log-likelihood loss for given rewards and responses to fit alpha & slope scale"""
+    if N_neurons is None:
+        N_neurons = len(data)
+
+    juiceAmounts_inv = {v: k for k, v in enumerate(juiceAmounts)}
+
+    def loss(pars):
+        responses = get_predicted_responses(
+            juiceAmounts,
+            alpha=alpha,
+            slope_scale=pars,
+            N_neurons=N_neurons,
+            R_t=R_t,
+        )
+        lik = 0
+        for i, d in enumerate(data):
+            l, _ = poisson_lik(
+                d[1], responses[i, [juiceAmounts_inv[d_i] for d_i in d[0]]]
+            )
+            lik += np.sum(l)
+        return -lik
+
+    return loss
+
+
+def error_thresholds(
     true_thresh, alpha=1, r_star=5, slope_scale=5, N_neurons=39, R_t=245.41
 ):
     """XX = [alpha, r_star]?"""
@@ -80,14 +216,14 @@ def get_loss_r_star_slope(true_thresh, alpha=1):
     """pars=[r_star, slope]"""
 
     def loss(pars):
-        return squared_error_thresholds(
+        return error_thresholds(
             true_thresh, r_star=pars[0], slope_scale=pars[1], alpha=alpha
         )
 
     return loss
 
 
-def log_density_ec(midpoints, alpha=1, s=0.71, scale=np.exp(1.289)):
+def log_density_ec(midpoints, alpha=1.0, s=0.71, scale=np.exp(1.289)):
     """log-density of midpoints according to the efficient code
     for fitting we actually remove the log-pdf part that is not changed by alpha
     """
@@ -122,6 +258,7 @@ def fit_alpha(alpha_dir="res_alpha"):
     res = minimize_scalar(loss, bounds=[0, 1])
     with open(os.path.join(alpha_dir + "res_alpha.pkl"), "wb") as f:
         pkl.dump({"res": res}, f)
+    return res.x
 
 
 def fit_rstar_slope(alpha_dir="res_alpha", savedir="res_rstar_slope/"):
@@ -157,6 +294,7 @@ def fit_rstar_slope(alpha_dir="res_alpha", savedir="res_rstar_slope/"):
                 loss,
                 XX[ij],
                 options={"maxiter": 1e5, "disp": True},
+                method="Nelder-Mead",
             )
             t1 = time.time()
             print("!!!!! {}s !!!!!".format(t1 - t0))
@@ -168,11 +306,39 @@ def fit_rstar_slope(alpha_dir="res_alpha", savedir="res_rstar_slope/"):
                 pkl.dump({"res": res}, f)
 
 
+def fit_slope_ml(alpha=1.0, slope_dir="res_slope", N_neurons=N_neurons, R_t=R_t):
+    # don't use neuron 19 as Dabney didn't
+    indices = np.setdiff1d(np.linspace(0, 39, 40).astype(np.int16), 19)
+    data = load_all_data()
+    data.pop(19)
+    if remove_min:
+        sigmoids = sio.loadmat("curve_fit_parameters_min.mat")
+    else:
+        sigmoids = sio.loadmat("curve_fit_parameters.mat")
+    midpoints = sigmoids["ps"][indices, 2]
+    idx_sort = np.argsort(midpoints)
+    data = [data[i] for i in idx_sort]
+    # slightly awkward because d[1] -= ... yields an error
+    if remove_min:
+        for d in data:
+            y = d[1]
+            y -= np.min(y)
+
+    loss = get_loss_ml_slope(data, alpha, N_neurons=N_neurons, R_t=R_t)
+
+    res = minimize_scalar(loss, bounds=[0.001, 10])
+
+    with open(os.path.join(slope_dir + "res_slope.pkl"), "wb") as f:
+        pkl.dump({"res": res}, f)
+    return res.x
+
+
 def load_matlab(filename):
     data = sio.loadmat(filename)
     return data
 
 
 if __name__ == "__main__":
-    fit_alpha()
+    alpha = fit_alpha()
+    # slope = fit_slope_ml(alpha)
     fit_rstar_slope()
