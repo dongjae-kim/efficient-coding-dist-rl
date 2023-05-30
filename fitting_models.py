@@ -209,10 +209,10 @@ class value_efficient_coding_moment():
         zero_crossings_ = zero_crossings_[idx_sorted]
         zero_crossings_estimated = ZC_estimator(zero_crossings_)
 
-        # ver 2
-        dir_measured_neurons='measured_neurons/'
-        NDAT = sio.loadmat(dir_measured_neurons + 'data_max.mat')['dat']
-        zero_crossings_estimated = NDAT['ZC'][0, 0].squeeze()
+        # # ver 2
+        # dir_measured_neurons='measured_neurons/'
+        # NDAT = sio.loadmat(dir_measured_neurons + 'data_max.mat')['dat']
+        # zero_crossings_estimated = NDAT['ZC'][0, 0].squeeze()
 
         self.Dabneys = [estimated_,zero_crossings_estimated]
 
@@ -2252,7 +2252,7 @@ def main():
 
     import sys
 
-    savedir = 'res_fit_alpha_fit/'
+    savedir = 'res_fit_alpha_fit_test/'
     if not os.path.exists(savedir):
         os.makedirs(savedir)
 
@@ -2280,7 +2280,7 @@ def main():
                 print('!!!!! {}s !!!!!'.format(t1 - t0))
 
                 import pickle as pkl
-                with open(savedir + 'res_fit_apprx_freealpha_freebeta_lognormal{0}.pkl'.format(ii),
+                with open(savedir + 'res_fit_alpha_fit_test{0}.pkl'.format(ii),
                           'wb') as f:
                     pkl.dump({'res_s': res_s}, f)
 
