@@ -193,25 +193,24 @@ if __name__ == "__main__":
         sio.savemat("curve_fit_bootstrap_min.mat", {"ps": ps})
     else:
         sio.savemat("curve_fit_bootstrap.mat", {"ps": ps})
-    # Bootstrapping trials & neurons
-    ps = np.zeros((40, num_sim, 3))
-    for simi in tqdm.trange(num_sim):
-        n_sample = np.random.choice(np.arange(40, dtype=int))  # neuron sample
-        for count_n, i in enumerate(n_sample):
-            x, y = data[i]
-            if remove_min:
-                y -= np.min(y)
+    # Bootstrapping trials & neuronsps = np.zeros((40, num_sim, 3))
+for simi in tqdm.trange(num_sim):
+    n_sample = np.random.choice(np.linspace(0, 39, dtype=np.int16), 40)  # neuron sample
+    for count_n, i in enumerate(n_sample):
+        x, y = data[i]
+        if remove_min:
+            y -= np.min(y)
 
-            i_sample = np.random.choice(
-                np.linspace(0, len(x) - 1, len(x), dtype=np.int16), len(x)
-            )
-            x_ = x[i_sample]
-            y_ = y[i_sample]
+        i_sample = np.random.choice(
+            np.linspace(0, len(x) - 1, len(x), dtype=np.int16), len(x)
+        )
+        x_ = np.array(x)[i_sample]
+        y_ = np.array(y)[i_sample]
 
-            pars, lik = fit_sigmoid(x_, y_, x_init=initial_guess)
+        pars, lik = fit_sigmoid(x_, y_, x_init=initial_guess)
 
-            ps[count_n, simi, :] = np.array(pars)
-            # print('neuron {} simulation {}'.format(count_n, simi))
+        ps[count_n, simi, :] = np.array(pars)
+        # print('neuron {} simulation {}'.format(count_n, simi))
 
     if remove_min:
         sio.savemat("curve_fit_bootstrap_neurons_min.mat", {"ps": ps})
