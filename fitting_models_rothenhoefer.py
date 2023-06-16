@@ -6,7 +6,7 @@ import seaborn as sns
 import time
 import scipy.io as sio
 import scipy
-
+import pickle as pkl
 # efficient coding using sigmoid response functions
 
 class value_efficient_coding_moment():
@@ -1506,7 +1506,49 @@ class statistics_():
         return RPs
 
 def test():
+    # load all files in res_fit_to_empirical_rothenhoefer
+    files = os.listdir('./res_fit_to_empirical_rothenhoefer_MSE_sort')
+    files = [f for f in files if f.endswith('.pkl')]
+    files.sort()
+
+    # make empty list
+    res = []
+    # for every file in files|
+    for f in files:
+        # open file using pickle
+        with open('./res_fit_to_empirical_rothenhoefer_MSE_sort/' + f, 'rb') as f:
+            res.append(pkl.load(f))
+
+    # ...and sorting in ascending order of fun
+    res_sorted = sorted(res, key=lambda x: x.fun)
+
+    # find that has lowest fun
+    res = res[np.argmin([r.fun for r in res])]
+    # print res
+    print(res)
+
+    # ec_norm and ec_unfm with the fitted parameters
+    params = res.x
+
+    N_neurons = 40
+    alpha_norm = params[0]
+    alpha_unfm =params[1]
+    # others uses res.x
+    slope_scale_norm = params[2]
+    slope_scale_unfm = params[3]
+    # R_t = 150
+    R_t = params[4]
+    spon_act = 5
+    samples = 10000
+
+    # cal slopes using spon_act
+
+    ec_norm = value_efficient_coding_moment('normal', N_neurons=N_neurons, R_t=R_t, X_OPT_ALPH= alpha_norm, slope_scale = slope_scale_norm)
+    ec_unfm = value_efficient_coding_moment('uniform', N_neurons=N_neurons, R_t=R_t, X_OPT_ALPH= alpha_unfm, slope_scale = slope_scale_unfm)
+
     print('x')
+
+
 
 if __name__ == "__main__":
     test()
