@@ -187,7 +187,7 @@ def get_loss_ml_slope(data, alpha=1, N_neurons=None, R_t=R_t):
 
 
 def error_thresholds(
-    true_thresh, alpha=1, r_star=5, slope_scale=5, N_neurons=39, R_t=245.41
+    true_thresh, alpha=1, r_star=5, slope_scale=5, N_neurons=39, R_t=R_t
 ):
     """XX = [alpha, r_star]?"""
     # bound
@@ -212,12 +212,12 @@ def error_thresholds(
     return loss_1
 
 
-def get_loss_r_star_slope(true_thresh, alpha=1):
+def get_loss_r_star_slope(true_thresh, alpha=1, R_t=R_t):
     """pars=[r_star, slope]"""
 
     def loss(pars):
         return error_thresholds(
-            true_thresh, r_star=pars[0], slope_scale=pars[1], alpha=alpha
+            true_thresh, r_star=pars[0], slope_scale=pars[1], alpha=alpha, R_t=R_t
         )
 
     return loss
@@ -256,18 +256,13 @@ def fit_alpha(alpha_dir="res_alpha"):
         os.makedirs(alpha_dir)
     # this is a 1D convex function, no multiple starts needed
     res = minimize_scalar(loss, bounds=[0, 1])
-    with open(os.path.join(alpha_dir + "res_alpha.pkl"), "wb") as f:
+    with open(os.path.join(alpha_dir, "res_alpha.pkl"), "wb") as f:
         pkl.dump({"res": res}, f)
     return res.x
 
 
-def fit_rstar_slope(alpha_dir="res_alpha", savedir="res_rstar_slope/"):
+def fit_rstar_slope(alpha=0.6, savedir="res_rstar_slope/", R_t=R_t):
     # fitting thresholds by adjusting overall slope and r_star
-
-    # load alpha
-    with open(os.path.join(alpha_dir, "res_alpha.pkl"), "rb") as f:
-        data = pkl.load(f)
-        alpha = data["res"].x
 
     # load thresholds
     NDAT = sio.loadmat(os.path.join("measured_neurons", "data_max.mat"))["dat"]
@@ -278,11 +273,11 @@ def fit_rstar_slope(alpha_dir="res_alpha", savedir="res_rstar_slope/"):
 
     # choose starting paramters using meshgrid
     num_seed = 5
-    XX0 = np.linspace(1.5, 15, num_seed)
+    XX0 = np.linspace(0.5, 10, num_seed)
     XX1 = np.linspace(0.5, 10, num_seed)
     XX = np.array(np.meshgrid(XX0, XX1)).T.reshape(-1, 2)
 
-    loss = get_loss_r_star_slope(true_thresh, alpha)
+    loss = get_loss_r_star_slope(true_thresh, alpha, R_t=R_t)
 
     for ij in range(num_seed**2):
         if not os.path.exists(savedir + "res_rstar_slope_{0}.pkl".format(ij)):
@@ -304,6 +299,53 @@ def fit_rstar_slope(alpha_dir="res_alpha", savedir="res_rstar_slope/"):
                 "wb",
             ) as f:
                 pkl.dump({"res": res}, f)
+
+
+def fit_R_t(alpha=1.0, R_t_dir="res_r_t"):
+    indices = np.setdiff1d(np.linspace(0, 39, 40).astype(np.int16), 19)
+    if remove_min:
+        sigmoids = sio.loadmat("curve_fit_parameters_min.mat")
+    else:
+        sigmoids = sio.loadmat("curve_fit_parameters.mat")
+    true_gains = sigmoids["ps"][indices, 1]
+    mean_gain = np.mean(true_gains)
+    N_neurons = len(indices)
+    p_thresh = (2 * np.arange(N_neurons) + 1) / N_neurons / 2
+    x = np.linspace(np.finfo(float).eps, 100, num=int(1e4))
+    _x_gap = x[1] - x[0]
+    p_prior = lognorm.pdf(x, s=0.71, scale=np.exp(1.289))
+    # p_prior = p_prior / np.sum(p_prior * _x_gap)
+    cum_P = lognorm.cdf(x, s=0.71, scale=np.exp(1.289))
+    # cum_P /= cum_P[-1] + 1e-4
+
+    # density = p_prior / (1 - cum_P) ** (1 - alpha)
+    # cum_d = np.cumsum(density)
+    # cum_d /= cum_d[-1] + 1e-4
+    cum_d = 1 - (1 - cum_P) ** alpha
+
+    thresh_ = np.interp(p_thresh, cum_d, x)
+    # compute response functions
+    neurons = []  # self.N number of neurons
+    norm_g = 1 / ((1 - cum_P) ** alpha)
+    gains = []
+    for i in range(N_neurons):
+        g_sn = np.interp(thresh_[i], x, norm_g)
+        a = slope_scale * p_thresh[i]
+        b = slope_scale * (1 - p_thresh[i])
+        neurons.append(g_sn * scipy.special.betainc(a, b, cum_d))
+    neurons = np.array(neurons)
+    # neurons at R_t = 100
+    neurons = 100 * neurons / np.sum(neurons * p_prior * _x_gap)
+    # fit sigmoids to get gains
+    pars = np.zeros((N_neurons, 3))
+    for i_n, neuron in enumerate(neurons):
+        y = np.interp(x, x, neuron)
+        pars[i_n], _ = fit_sigmoid(x, y, w=p_prior)
+    gains = pars[:, 1]
+    R_t = 100 * mean_gain / np.mean(gains)
+    with open(os.path.join(R_t_dir, "res_r.pkl"), "wb") as f:
+        pkl.dump({"R_t": R_t}, f)
+    return R_t
 
 
 def fit_slope_ml(alpha=1.0, slope_dir="res_slope", N_neurons=N_neurons, R_t=R_t):
@@ -328,7 +370,7 @@ def fit_slope_ml(alpha=1.0, slope_dir="res_slope", N_neurons=N_neurons, R_t=R_t)
 
     res = minimize_scalar(loss, bounds=[0.001, 10])
 
-    with open(os.path.join(slope_dir + "res_slope.pkl"), "wb") as f:
+    with open(os.path.join(slope_dir, "res_slope.pkl"), "wb") as f:
         pkl.dump({"res": res}, f)
     return res.x
 
@@ -340,5 +382,5 @@ def load_matlab(filename):
 
 if __name__ == "__main__":
     alpha = fit_alpha()
-    # slope = fit_slope_ml(alpha)
-    fit_rstar_slope()
+    fit_rstar_slope(alpha, R_t=R_t)
+    R_t = fit_R_t(alpha)
