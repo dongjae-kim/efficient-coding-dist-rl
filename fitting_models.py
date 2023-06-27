@@ -56,7 +56,7 @@ def get_thresholds(alpha=1, r_star=5, slope_scale=5, N_neurons=39, R_t=R_t):
     return np.array(thresholds)
 
 
-def get_threshold_slope(alpha=1, r_star=5, slope_scale=5, N_neurons=39, R_t=R_t):
+def get_threshold_sig(alpha=1, r_star=5, slope_scale=5, N_neurons=39, R_t=R_t):
     p_thresh = (2 * np.arange(N_neurons) + 1) / N_neurons / 2
     x = np.linspace(np.finfo(float).eps, 100, num=int(1e4))
     _x_gap = x[1] - x[0]
@@ -189,7 +189,6 @@ def get_loss_ml_slope(data, alpha=1, N_neurons=None, R_t=R_t):
 def error_thresholds(
     true_thresh, alpha=1, r_star=5, slope_scale=5, N_neurons=39, R_t=R_t
 ):
-    """XX = [alpha, r_star]?"""
     # bound
     if alpha <= 0.01 or alpha > 1:
         print(1e10)
@@ -212,13 +211,143 @@ def error_thresholds(
     return loss_1
 
 
-def get_loss_r_star_slope(true_thresh, alpha=1, R_t=R_t):
-    """pars=[r_star, slope]"""
+def error_thresholds_gain(
+    true_thresh, true_gain, alpha=1, r_star=5, slope_scale=5, N_neurons=39, R_t=R_t
+):
+    # bound
+    if alpha <= 0.01 or alpha > 1:
+        print(1e10)
+        return 1e10
+    # bound
+    if r_star <= 0.01 or r_star > 50:
+        # print(1e10)
+        return 1e10
 
-    def loss(pars):
-        return error_thresholds(
-            true_thresh, r_star=pars[0], slope_scale=pars[1], alpha=alpha, R_t=R_t
-        )
+    thresholds, pars = get_threshold_sig(
+        alpha=alpha,
+        r_star=r_star,
+        slope_scale=slope_scale,
+        N_neurons=N_neurons,
+        R_t=R_t,
+    )
+
+    loss1 = np.mean((np.sort(thresholds) - np.sort(np.array(true_thresh))) ** 2)
+    loss2 = (np.mean(true_gain) - np.mean(pars[:, 1])) ** 2
+    return loss1 + loss2
+
+
+def error_thresholds_gain_slope(
+    true_thresh,
+    true_gain,
+    true_slope,
+    alpha=1,
+    r_star=5,
+    slope_scale=5,
+    N_neurons=39,
+    R_t=R_t,
+):
+    # bound
+    if alpha <= 0.01 or alpha > 1:
+        print(1e10)
+        return 1e10
+    # bound
+    if r_star <= 0.01 or r_star > 50:
+        # print(1e10)
+        return 1e10
+
+    thresholds, pars = get_threshold_sig(
+        alpha=alpha,
+        r_star=r_star,
+        slope_scale=slope_scale,
+        N_neurons=N_neurons,
+        R_t=R_t,
+    )
+
+    loss1 = np.mean((np.sort(thresholds) - np.sort(np.array(true_thresh))) ** 2)
+    loss2 = (np.mean(true_gain) - np.mean(pars[:, 1])) ** 2
+    loss3 = (np.mean(true_slope) - np.mean(pars[:, 0])) ** 2
+    return loss1 + loss2 + loss3
+
+
+def get_loss_thresh(true_thresh, alpha=1, R_t=None):
+    """pars=[r_star, slope] or [r_star, slope, R_t]"""
+    if R_t is None:
+
+        def loss(pars):
+            return error_thresholds(
+                true_thresh,
+                r_star=pars[0],
+                slope_scale=pars[1],
+                alpha=alpha,
+                R_t=pars[2],
+            )
+
+    else:
+
+        def loss(pars):
+            return error_thresholds(
+                true_thresh, r_star=pars[0], slope_scale=pars[1], alpha=alpha, R_t=R_t
+            )
+
+    return loss
+
+
+def get_loss_thresh_gain(true_thresh, true_gain, alpha=1, R_t=None):
+    """pars=[r_star, slope] or [r_star, slope, R_t]"""
+    if R_t is None:
+
+        def loss(pars):
+            return error_thresholds_gain(
+                true_thresh,
+                true_gain,
+                r_star=pars[0],
+                slope_scale=pars[1],
+                alpha=alpha,
+                R_t=pars[2],
+            )
+
+    else:
+
+        def loss(pars):
+            return error_thresholds_gain(
+                true_thresh,
+                true_gain,
+                r_star=pars[0],
+                slope_scale=pars[1],
+                alpha=alpha,
+                R_t=R_t,
+            )
+
+    return loss
+
+
+def get_loss_thresh_gain_slope(true_thresh, true_gain, true_slope, alpha=1, R_t=None):
+    """pars=[r_star, slope] or [r_star, slope, R_t]"""
+    if R_t is None:
+
+        def loss(pars):
+            return error_thresholds_gain_slope(
+                true_thresh,
+                true_gain,
+                true_slope,
+                r_star=pars[0],
+                slope_scale=pars[1],
+                alpha=alpha,
+                R_t=pars[2],
+            )
+
+    else:
+
+        def loss(pars):
+            return error_thresholds_gain_slope(
+                true_thresh,
+                true_gain,
+                true_slope,
+                r_star=pars[0],
+                slope_scale=pars[1],
+                alpha=alpha,
+                R_t=R_t,
+            )
 
     return loss
 
@@ -277,7 +406,7 @@ def fit_rstar_slope(alpha=0.6, savedir="res_rstar_slope/", R_t=R_t):
     XX1 = np.linspace(0.5, 10, num_seed)
     XX = np.array(np.meshgrid(XX0, XX1)).T.reshape(-1, 2)
 
-    loss = get_loss_r_star_slope(true_thresh, alpha, R_t=R_t)
+    loss = get_loss_thresh_gain(true_thresh, alpha, R_t=R_t)
 
     for ij in range(num_seed**2):
         if not os.path.exists(savedir + "res_rstar_slope_{0}.pkl".format(ij)):
@@ -296,6 +425,54 @@ def fit_rstar_slope(alpha=0.6, savedir="res_rstar_slope/", R_t=R_t):
 
             with open(
                 savedir + "res_rstar_slope_{0}.pkl".format(ij),
+                "wb",
+            ) as f:
+                pkl.dump({"res": res}, f)
+
+
+def fit_rstar_slope_rt(alpha=0.6, savedir="res_rstar_slope_rt/", use_slope=False):
+    # fitting thresholds by adjusting overall slope and r_star
+
+    # load thresholds
+    NDAT = sio.loadmat(os.path.join("measured_neurons", "data_max.mat"))["dat"]
+    true_thresh = NDAT["ZC"][0, 0].squeeze()
+
+    data = sio.loadmat("curve_fit_parameters_min.mat")
+    true_gain = data["ps"][:, 1]
+    true_slope = data["ps"][:, 0]
+
+    if not os.path.exists(savedir):
+        os.makedirs(savedir)
+
+    # choose starting paramters using meshgrid
+    num_seed = 5
+    XX0 = np.linspace(0.5, 10, num_seed)
+    XX1 = np.linspace(0.5, 10, num_seed)
+    XX = np.array(np.meshgrid(XX0, XX1, 200)).T.reshape(-1, 3)
+    if use_slope:
+        loss = get_loss_thresh_gain_slope(true_thresh, true_gain, true_slope, alpha)
+    else:
+        loss = get_loss_thresh_gain(true_thresh, true_gain, alpha)
+
+    for ij in range(num_seed**2):
+        if not os.path.exists(
+            os.path.join(savedir, "res_rstar_slope_{0}.pkl".format(ij))
+        ):
+            # parameter seeds
+            print("starting fit " + str(ij))
+            print(XX[ij])
+            t0 = time.time()
+            res = minimize(
+                loss,
+                XX[ij],
+                options={"maxiter": 1e5, "disp": True},
+                method="Nelder-Mead",
+            )
+            t1 = time.time()
+            print("!!!!! {}s !!!!!".format(t1 - t0))
+
+            with open(
+                os.path.join(savedir, "res_rstar_slope_{0}.pkl".format(ij)),
                 "wb",
             ) as f:
                 pkl.dump({"res": res}, f)
@@ -382,5 +559,4 @@ def load_matlab(filename):
 
 if __name__ == "__main__":
     alpha = fit_alpha()
-    fit_rstar_slope(alpha, R_t=R_t)
-    R_t = fit_R_t(alpha)
+    fit_rstar_slope_rt(alpha, use_slope=False)
