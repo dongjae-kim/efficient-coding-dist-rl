@@ -4,7 +4,7 @@ import os
 import numpy as np
 import scipy.io as sio
 import scipy
-from scipy.stats import lognorm, poisson
+from scipy.stats import lognorm, poisson, gamma
 from matplotlib import pyplot as plt
 from scipy.optimize import curve_fit
 from fit_sigmoids import fit_sigmoid
@@ -17,10 +17,11 @@ class value_efficient_coding_moment:
     def __init__(
         self,
         N_neurons=18,
-        R_t=247.0690,
+        R_t=R_t,
         alpha=1.0,
         slope_scale=slope_scale,
         simpler=False,
+        use_gamma=False
     ):
         self.alpha = alpha
         # number of neurons
@@ -59,8 +60,20 @@ class value_efficient_coding_moment:
         self._x_gap = self.x[1] - self.x[0]
         self.x_minmax = [0, 21]
 
-        self.p_prior = lognorm.pdf(self.x, s=0.71, scale=np.exp(1.289))
-        self.p_prior_inf = lognorm.pdf(self.x_inf, s=0.71, scale=np.exp(1.289))
+        # setting up prior distribution
+        mean = np.sum(self.juice_magnitudes * self.juice_prob)
+        mom2 = np.sum(self.juice_magnitudes ** 2 * self.juice_prob)
+        var = mom2 - mean ** 2
+        if use_gamma:
+            t = var / mean
+            k = mean / t
+            self.p_prior = gamma(k, 0, t).pdf(self.x)
+            self.p_prior = gamma(k, 0, t).pdf(self.x_inf)
+        else:  # log-normal
+            v = np.log(var/(mean ** 2) + 1)
+            m = np.log(mean) - (v / 2)
+            self.p_prior = lognorm.pdf(self.x, np.sqrt(v), scale=np.exp(m))
+            self.p_prior_inf = lognorm.pdf(self.x_inf, np.sqrt(v), scale=np.exp(m))
 
         self.p_prior = self.p_prior / np.sum(self.p_prior * self._x_gap)
         self.p_prior_inf = self.p_prior_inf / np.sum(self.p_prior_inf * self._x_gap)
