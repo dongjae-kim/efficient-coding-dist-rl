@@ -12,12 +12,30 @@ from fit_sigmoids import poisson_lik, load_all_data, fit_sigmoid
 
 N_neurons = 39
 slope_scale = 6.954096526721094
-juiceAmounts = [0.1, 0.3, 1.2, 2.5, 5, 10, 20]
 remove_min = True
 if remove_min:
     R_t = 293.098
 else:
     R_t = 244.97
+juiceAmounts = np.array([0.1, 0.3, 1.2, 2.5, 5, 10, 20])
+juice_prob = np.array(
+    [
+        0.06612594,
+        0.09090909,
+        0.14847358,
+        0.15489467,
+        0.31159175,
+        0.1509519,
+        0.07705306,
+    ]
+)
+
+# setting up prior distribution
+mean = np.sum(juiceAmounts * juice_prob)
+mom2 = np.sum(juiceAmounts ** 2 * juice_prob)
+var = mom2 - mean ** 2
+v = np.log(var/(mean ** 2) + 1)
+m = np.log(mean) - (v / 2)
 
 
 def get_thresholds(alpha=1, r_star=5, slope_scale=5, N_neurons=39, R_t=R_t):
@@ -25,7 +43,7 @@ def get_thresholds(alpha=1, r_star=5, slope_scale=5, N_neurons=39, R_t=R_t):
     p_thresh = (2 * np.arange(N_neurons) + 1) / N_neurons / 2
     x = np.linspace(np.finfo(float).eps, 100, num=int(1e4))
     _x_gap = x[1] - x[0]
-    p_prior = lognorm.pdf(x, s=0.71, scale=np.exp(1.289))
+    p_prior = lognorm.pdf(x, s=np.sqrt(v), scale=np.exp(m))
     p_prior = p_prior / np.sum(p_prior * _x_gap)
     cum_P = np.cumsum(p_prior)
     cum_P /= cum_P[-1] + 1e-4
@@ -60,7 +78,7 @@ def get_threshold_sig(alpha=1, r_star=5, slope_scale=5, N_neurons=39, R_t=R_t):
     p_thresh = (2 * np.arange(N_neurons) + 1) / N_neurons / 2
     x = np.linspace(np.finfo(float).eps, 100, num=int(1e4))
     _x_gap = x[1] - x[0]
-    p_prior = lognorm.pdf(x, s=0.71, scale=np.exp(1.289))
+    p_prior = lognorm.pdf(x, s=np.sqrt(v), scale=np.exp(m))
     p_prior = p_prior / np.sum(p_prior * _x_gap)
     cum_P = np.cumsum(p_prior)
     cum_P /= cum_P[-1] + 1e-4
@@ -99,9 +117,9 @@ def get_predicted_responses(r_request, alpha=1, slope_scale=5, N_neurons=39, R_t
     p_thresh = (2 * np.arange(N_neurons) + 1) / N_neurons / 2
     x = np.linspace(np.finfo(float).eps, 100, num=int(1e4))
     _x_gap = x[1] - x[0]
-    p_prior = lognorm.pdf(x, s=0.71, scale=np.exp(1.289))
+    p_prior = lognorm.pdf(x, s=np.sqrt(v), scale=np.exp(m))
     # p_prior = p_prior / np.sum(p_prior * _x_gap)
-    cum_P = lognorm.cdf(x, s=0.71, scale=np.exp(1.289))
+    cum_P = lognorm.cdf(x, s=np.sqrt(v), scale=np.exp(m))
     # cum_P /= cum_P[-1] + 1e-4
 
     # density = p_prior / (1 - cum_P) ** (1 - alpha)
@@ -352,7 +370,7 @@ def get_loss_thresh_gain_slope(true_thresh, true_gain, true_slope, alpha=1, R_t=
     return loss
 
 
-def log_density_ec(midpoints, alpha=1.0, s=0.71, scale=np.exp(1.289)):
+def log_density_ec(midpoints, alpha=1.0, s=np.sqrt(v), scale=np.exp(m)):
     """log-density of midpoints according to the efficient code
     for fitting we actually remove the log-pdf part that is not changed by alpha
     """
@@ -490,9 +508,9 @@ def fit_R_t(alpha=1.0, R_t_dir="res_r_t"):
     p_thresh = (2 * np.arange(N_neurons) + 1) / N_neurons / 2
     x = np.linspace(np.finfo(float).eps, 100, num=int(1e4))
     _x_gap = x[1] - x[0]
-    p_prior = lognorm.pdf(x, s=0.71, scale=np.exp(1.289))
+    p_prior = lognorm.pdf(x, s=np.sqrt(v), scale=np.exp(m))
     # p_prior = p_prior / np.sum(p_prior * _x_gap)
-    cum_P = lognorm.cdf(x, s=0.71, scale=np.exp(1.289))
+    cum_P = lognorm.cdf(x, s=np.sqrt(v), scale=np.exp(m))
     # cum_P /= cum_P[-1] + 1e-4
 
     # density = p_prior / (1 - cum_P) ** (1 - alpha)

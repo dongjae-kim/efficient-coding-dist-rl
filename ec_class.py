@@ -12,6 +12,24 @@ from fit_sigmoids import fit_sigmoid
 slope_scale = 6.954096526721094
 R_t = 244.97100537062806
 
+juice_magnitudes = np.array([0.1, 0.3, 1.2, 2.5, 5, 10, 20])
+juice_prob = np.array(
+    [
+        0.06612594,
+        0.09090909,
+        0.14847358,
+        0.15489467,
+        0.31159175,
+        0.1509519,
+        0.07705306,
+    ]
+)
+
+# setting up prior distribution
+mean = np.sum(juice_magnitudes * juice_prob)
+mom2 = np.sum(juice_magnitudes ** 2 * juice_prob)
+var = mom2 - mean ** 2
+
 
 class value_efficient_coding_moment:
     def __init__(
@@ -30,18 +48,6 @@ class value_efficient_coding_moment:
         self.R = R_t
         # real data prior
         # it is borrowed from the original data of Dabney's
-        self.juice_magnitudes = np.array([0.1, 0.3, 1.2, 2.5, 5, 10, 20])
-        self.juice_prob = np.array(
-            [
-                0.06612594,
-                0.09090909,
-                0.14847358,
-                0.15489467,
-                0.31159175,
-                0.1509519,
-                0.07705306,
-            ]
-        )
         self.juice_prob /= np.sum(self.juice_prob)
 
         p_thresh = (2 * np.arange(N_neurons) + 1) / N_neurons / 2
@@ -60,10 +66,6 @@ class value_efficient_coding_moment:
         self._x_gap = self.x[1] - self.x[0]
         self.x_minmax = [0, 21]
 
-        # setting up prior distribution
-        mean = np.sum(self.juice_magnitudes * self.juice_prob)
-        mom2 = np.sum(self.juice_magnitudes ** 2 * self.juice_prob)
-        var = mom2 - mean ** 2
         if use_gamma:
             t = var / mean
             k = mean / t
