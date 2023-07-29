@@ -1,6 +1,6 @@
 import numpy as np
 import pickle as pkl
-from scipy.stats import lognorm
+from scipy.stats import lognorm, gamma
 import os
 import time
 import scipy.io as sio
@@ -32,18 +32,27 @@ juice_prob = np.array(
 
 # setting up prior distribution
 mean = np.sum(juiceAmounts * juice_prob)
-mom2 = np.sum(juiceAmounts ** 2 * juice_prob)
-var = mom2 - mean ** 2
-v = np.log(var/(mean ** 2) + 1)
+mom2 = np.sum(juiceAmounts**2 * juice_prob)
+var = mom2 - mean**2
+v = np.log(var / (mean**2) + 1)
 m = np.log(mean) - (v / 2)
 
+# gamma parameters
+t = var / mean
+k = mean / t
 
-def get_thresholds(alpha=1, r_star=5, slope_scale=5, N_neurons=39, R_t=R_t):
+
+def get_thresholds(
+    alpha=1, r_star=5, slope_scale=5, N_neurons=39, R_t=R_t, use_gamma=False
+):
     """get threshold for each neuron without creating a whole object"""
     p_thresh = (2 * np.arange(N_neurons) + 1) / N_neurons / 2
     x = np.linspace(np.finfo(float).eps, 100, num=int(1e4))
     _x_gap = x[1] - x[0]
-    p_prior = lognorm.pdf(x, s=np.sqrt(v), scale=np.exp(m))
+    if use_gamma:
+        p_prior = gamma(k, 0, t).pdf(x)
+    else:
+        p_prior = lognorm.pdf(x, s=np.sqrt(v), scale=np.exp(m))
     p_prior = p_prior / np.sum(p_prior * _x_gap)
     cum_P = np.cumsum(p_prior)
     cum_P /= cum_P[-1] + 1e-4
@@ -74,11 +83,16 @@ def get_thresholds(alpha=1, r_star=5, slope_scale=5, N_neurons=39, R_t=R_t):
     return np.array(thresholds)
 
 
-def get_threshold_sig(alpha=1, r_star=5, slope_scale=5, N_neurons=39, R_t=R_t):
+def get_threshold_sig(
+    alpha=1, r_star=5, slope_scale=5, N_neurons=39, R_t=R_t, use_gamma=False
+):
     p_thresh = (2 * np.arange(N_neurons) + 1) / N_neurons / 2
     x = np.linspace(np.finfo(float).eps, 100, num=int(1e4))
     _x_gap = x[1] - x[0]
-    p_prior = lognorm.pdf(x, s=np.sqrt(v), scale=np.exp(m))
+    if use_gamma:
+        p_prior = gamma(k, 0, t).pdf(x)
+    else:
+        p_prior = lognorm.pdf(x, s=np.sqrt(v), scale=np.exp(m))
     p_prior = p_prior / np.sum(p_prior * _x_gap)
     cum_P = np.cumsum(p_prior)
     cum_P /= cum_P[-1] + 1e-4
@@ -112,15 +126,21 @@ def get_threshold_sig(alpha=1, r_star=5, slope_scale=5, N_neurons=39, R_t=R_t):
     return thresholds, pars
 
 
-def get_predicted_responses(r_request, alpha=1, slope_scale=5, N_neurons=39, R_t=R_t):
+def get_predicted_responses(
+    r_request, alpha=1, slope_scale=5, N_neurons=39, R_t=R_t, use_gamma=False
+):
     """get responses predicted for each neuron at the requested locations reward values r_request"""
     p_thresh = (2 * np.arange(N_neurons) + 1) / N_neurons / 2
     x = np.linspace(np.finfo(float).eps, 100, num=int(1e4))
     _x_gap = x[1] - x[0]
-    p_prior = lognorm.pdf(x, s=np.sqrt(v), scale=np.exp(m))
-    # p_prior = p_prior / np.sum(p_prior * _x_gap)
-    cum_P = lognorm.cdf(x, s=np.sqrt(v), scale=np.exp(m))
-    # cum_P /= cum_P[-1] + 1e-4
+    if use_gamma:
+        p_prior = gamma(k, 0, t).pdf(x)
+        cum_P = gamma(k, 0, t).cdf(x)
+    else:
+        p_prior = lognorm.pdf(x, s=np.sqrt(v), scale=np.exp(m))
+        # p_prior = p_prior / np.sum(p_prior * _x_gap)
+        cum_P = lognorm.cdf(x, s=np.sqrt(v), scale=np.exp(m))
+        # cum_P /= cum_P[-1] + 1e-4
 
     # density = p_prior / (1 - cum_P) ** (1 - alpha)
     # cum_d = np.cumsum(density)
@@ -148,7 +168,7 @@ def get_predicted_responses(r_request, alpha=1, slope_scale=5, N_neurons=39, R_t
     return np.stack(predictions)
 
 
-def get_loss_ml(data, N_neurons=None, R_t=R_t):
+def get_loss_ml(data, N_neurons=None, R_t=R_t, use_gamma=False):
     """log-likelihood loss for given rewards and responses to fit alpha & slope scale"""
     if N_neurons is None:
         N_neurons = len(data)
@@ -166,6 +186,7 @@ def get_loss_ml(data, N_neurons=None, R_t=R_t):
             slope_scale=pars[1],
             N_neurons=N_neurons,
             R_t=R_t,
+            use_gamma=use_gamma,
         )
         lik = 0
         for i, d in enumerate(data):
@@ -178,7 +199,7 @@ def get_loss_ml(data, N_neurons=None, R_t=R_t):
     return loss
 
 
-def get_loss_ml_slope(data, alpha=1, N_neurons=None, R_t=R_t):
+def get_loss_ml_slope(data, alpha=1, N_neurons=None, R_t=R_t, use_gamma=False):
     """log-likelihood loss for given rewards and responses to fit alpha & slope scale"""
     if N_neurons is None:
         N_neurons = len(data)
@@ -192,6 +213,7 @@ def get_loss_ml_slope(data, alpha=1, N_neurons=None, R_t=R_t):
             slope_scale=pars,
             N_neurons=N_neurons,
             R_t=R_t,
+            use_gamma=use_gamma,
         )
         lik = 0
         for i, d in enumerate(data):
@@ -205,7 +227,13 @@ def get_loss_ml_slope(data, alpha=1, N_neurons=None, R_t=R_t):
 
 
 def error_thresholds(
-    true_thresh, alpha=1, r_star=5, slope_scale=5, N_neurons=39, R_t=R_t
+    true_thresh,
+    alpha=1,
+    r_star=5,
+    slope_scale=5,
+    N_neurons=39,
+    R_t=R_t,
+    use_gamma=False,
 ):
     # bound
     if alpha <= 0.01 or alpha > 1:
@@ -222,6 +250,7 @@ def error_thresholds(
         slope_scale=slope_scale,
         N_neurons=N_neurons,
         R_t=R_t,
+        use_gamma=use_gamma,
     )
 
     loss_1 = np.mean((np.sort(thresholds) - np.sort(np.array(true_thresh))) ** 2)
@@ -230,7 +259,14 @@ def error_thresholds(
 
 
 def error_thresholds_gain(
-    true_thresh, true_gain, alpha=1, r_star=5, slope_scale=5, N_neurons=39, R_t=R_t
+    true_thresh,
+    true_gain,
+    alpha=1,
+    r_star=5,
+    slope_scale=5,
+    N_neurons=39,
+    R_t=R_t,
+    use_gamma=False,
 ):
     # bound
     if alpha <= 0.01 or alpha > 1:
@@ -247,10 +283,14 @@ def error_thresholds_gain(
         slope_scale=slope_scale,
         N_neurons=N_neurons,
         R_t=R_t,
+        use_gamma=use_gamma,
     )
 
     loss1 = np.mean((np.sort(thresholds) - np.sort(np.array(true_thresh))) ** 2)
     loss2 = (np.mean(true_gain) - np.mean(pars[:, 1])) ** 2
+    print("----")
+    print(loss1)
+    print(loss2)
     return loss1 + loss2
 
 
@@ -263,6 +303,7 @@ def error_thresholds_gain_slope(
     slope_scale=5,
     N_neurons=39,
     R_t=R_t,
+    use_gamma=False,
 ):
     # bound
     if alpha <= 0.01 or alpha > 1:
@@ -279,6 +320,7 @@ def error_thresholds_gain_slope(
         slope_scale=slope_scale,
         N_neurons=N_neurons,
         R_t=R_t,
+        use_gamma=use_gamma,
     )
 
     loss1 = np.mean((np.sort(thresholds) - np.sort(np.array(true_thresh))) ** 2)
@@ -287,7 +329,7 @@ def error_thresholds_gain_slope(
     return loss1 + loss2 + loss3
 
 
-def get_loss_thresh(true_thresh, alpha=1, R_t=None):
+def get_loss_thresh(true_thresh, alpha=1, R_t=None, use_gamma=False):
     """pars=[r_star, slope] or [r_star, slope, R_t]"""
     if R_t is None:
 
@@ -298,19 +340,25 @@ def get_loss_thresh(true_thresh, alpha=1, R_t=None):
                 slope_scale=pars[1],
                 alpha=alpha,
                 R_t=pars[2],
+                use_gamma=use_gamma,
             )
 
     else:
 
         def loss(pars):
             return error_thresholds(
-                true_thresh, r_star=pars[0], slope_scale=pars[1], alpha=alpha, R_t=R_t
+                true_thresh,
+                r_star=pars[0],
+                slope_scale=pars[1],
+                alpha=alpha,
+                R_t=R_t,
+                use_gamma=use_gamma,
             )
 
     return loss
 
 
-def get_loss_thresh_gain(true_thresh, true_gain, alpha=1, R_t=None):
+def get_loss_thresh_gain(true_thresh, true_gain, alpha=1, R_t=None, use_gamma=False):
     """pars=[r_star, slope] or [r_star, slope, R_t]"""
     if R_t is None:
 
@@ -322,6 +370,7 @@ def get_loss_thresh_gain(true_thresh, true_gain, alpha=1, R_t=None):
                 slope_scale=pars[1],
                 alpha=alpha,
                 R_t=pars[2],
+                use_gamma=use_gamma,
             )
 
     else:
@@ -334,12 +383,15 @@ def get_loss_thresh_gain(true_thresh, true_gain, alpha=1, R_t=None):
                 slope_scale=pars[1],
                 alpha=alpha,
                 R_t=R_t,
+                use_gamma=use_gamma,
             )
 
     return loss
 
 
-def get_loss_thresh_gain_slope(true_thresh, true_gain, true_slope, alpha=1, R_t=None):
+def get_loss_thresh_gain_slope(
+    true_thresh, true_gain, true_slope, alpha=1, R_t=None, use_gamma=False
+):
     """pars=[r_star, slope] or [r_star, slope, R_t]"""
     if R_t is None:
 
@@ -352,6 +404,7 @@ def get_loss_thresh_gain_slope(true_thresh, true_gain, true_slope, alpha=1, R_t=
                 slope_scale=pars[1],
                 alpha=alpha,
                 R_t=pars[2],
+                use_gamma=use_gamma,
             )
 
     else:
@@ -370,7 +423,7 @@ def get_loss_thresh_gain_slope(true_thresh, true_gain, true_slope, alpha=1, R_t=
     return loss
 
 
-def log_density_ec(midpoints, alpha=1.0, s=np.sqrt(v), scale=np.exp(m)):
+def log_density_ec(midpoints, alpha=1.0, use_gamma=False):
     """log-density of midpoints according to the efficient code
     for fitting we actually remove the log-pdf part that is not changed by alpha
     """
@@ -379,26 +432,29 @@ def log_density_ec(midpoints, alpha=1.0, s=np.sqrt(v), scale=np.exp(m)):
     #    - (1 - alpha) * np.log(1 - lognorm.cdf(midpoints))
     #    + np.log(alpha)
     # )
-    log_d = np.log(alpha) - (1 - alpha) * np.log(
-        1 - lognorm.cdf(midpoints, s=s, scale=scale)
-    )
+    if use_gamma:
+        log_d = np.log(alpha) - (1 - alpha) * np.log(1 - gamma(k, 0, t).cdf(midpoints))
+    else:
+        log_d = np.log(alpha) - (1 - alpha) * np.log(
+            1 - lognorm.cdf(midpoints, s=np.sqrt(v), scale=np.exp(m))
+        )
     return log_d
 
 
-def get_loss_alpha(midpoints):
+def get_loss_alpha(midpoints, use_gamma=False):
     def loss(alpha):
         if alpha <= 0:
             return 1e10
         else:
-            return -np.sum(log_density_ec(midpoints, alpha=alpha))
+            return -np.sum(log_density_ec(midpoints, alpha=alpha, use_gamma=use_gamma))
 
     return loss
 
 
-def fit_alpha(alpha_dir="res_alpha"):
+def fit_alpha(alpha_dir="res_alpha", use_gamma=False):
     data = sio.loadmat("curve_fit_parameters.mat")["ps"]
     midpoints = data[np.setdiff1d(np.linspace(0, 39, 40).astype(int), 19), 2]
-    loss = get_loss_alpha(midpoints)
+    loss = get_loss_alpha(midpoints, use_gamma=use_gamma)
     if not os.path.exists(alpha_dir):
         os.makedirs(alpha_dir)
     # this is a 1D convex function, no multiple starts needed
@@ -408,7 +464,7 @@ def fit_alpha(alpha_dir="res_alpha"):
     return res.x
 
 
-def fit_rstar_slope(alpha=0.6, savedir="res_rstar_slope/", R_t=R_t):
+def fit_rstar_slope(alpha=0.6, savedir="res_rstar_slope/", R_t=R_t, use_gamma=False):
     # fitting thresholds by adjusting overall slope and r_star
 
     # load thresholds
@@ -424,7 +480,7 @@ def fit_rstar_slope(alpha=0.6, savedir="res_rstar_slope/", R_t=R_t):
     XX1 = np.linspace(0.5, 10, num_seed)
     XX = np.array(np.meshgrid(XX0, XX1)).T.reshape(-1, 2)
 
-    loss = get_loss_thresh_gain(true_thresh, alpha, R_t=R_t)
+    loss = get_loss_thresh_gain(true_thresh, alpha, R_t=R_t, use_gamma=use_gamma)
 
     for ij in range(num_seed**2):
         if not os.path.exists(savedir + "res_rstar_slope_{0}.pkl".format(ij)):
@@ -448,7 +504,9 @@ def fit_rstar_slope(alpha=0.6, savedir="res_rstar_slope/", R_t=R_t):
                 pkl.dump({"res": res}, f)
 
 
-def fit_rstar_slope_rt(alpha=0.6, savedir="res_rstar_slope_rt/", use_slope=False):
+def fit_rstar_slope_rt(
+    alpha=0.6, savedir="res_rstar_slope_rt/", use_slope=False, use_gamma=False
+):
     # fitting thresholds by adjusting overall slope and r_star
 
     # load thresholds
@@ -468,9 +526,11 @@ def fit_rstar_slope_rt(alpha=0.6, savedir="res_rstar_slope_rt/", use_slope=False
     XX1 = np.linspace(0.5, 10, num_seed)
     XX = np.array(np.meshgrid(XX0, XX1, 200)).T.reshape(-1, 3)
     if use_slope:
-        loss = get_loss_thresh_gain_slope(true_thresh, true_gain, true_slope, alpha)
+        loss = get_loss_thresh_gain_slope(
+            true_thresh, true_gain, true_slope, alpha, use_gamma=use_gamma
+        )
     else:
-        loss = get_loss_thresh_gain(true_thresh, true_gain, alpha)
+        loss = get_loss_thresh_gain(true_thresh, true_gain, alpha, use_gamma=use_gamma)
 
     for ij in range(num_seed**2):
         if not os.path.exists(
@@ -576,5 +636,16 @@ def load_matlab(filename):
 
 
 if __name__ == "__main__":
-    alpha = fit_alpha()
-    fit_rstar_slope_rt(alpha, use_slope=False)
+    import argparse
+
+    parse = argparse.ArgumentParser()
+    parse.add_argument("-g", "--gamma", action="store_true")
+    args = parse.parse_args()
+    if args.gamma:
+        alpha_dir = "res_alpha_gamma"
+        savedir = "res_rstar_slope_rt_gamma/"
+    else:
+        alpha_dir = "res_alpha"
+        savedir = "res_rstar_slope_rt/"
+    alpha = fit_alpha(alpha_dir=alpha_dir, use_gamma=args.gamma)
+    fit_rstar_slope_rt(alpha, savedir=savedir, use_slope=False, use_gamma=args.gamma)
