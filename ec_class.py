@@ -24,6 +24,7 @@ juice_prob = np.array(
         0.07705306,
     ]
 )
+juice_prob /= np.sum(juice_prob)
 
 # setting up prior distribution
 mean = np.sum(juice_magnitudes * juice_prob)
@@ -46,9 +47,6 @@ class value_efficient_coding_moment:
         self.N = N_neurons
         # total population response: mean of R spikes
         self.R = R_t
-        # real data prior
-        # it is borrowed from the original data of Dabney's
-        self.juice_prob /= np.sum(self.juice_prob)
 
         p_thresh = (2 * np.arange(N_neurons) + 1) / N_neurons / 2
         self.slope_scale = slope_scale
@@ -70,7 +68,7 @@ class value_efficient_coding_moment:
             t = var / mean
             k = mean / t
             self.p_prior = gamma(k, 0, t).pdf(self.x)
-            self.p_prior = gamma(k, 0, t).pdf(self.x_inf)
+            self.p_prior_inf = gamma(k, 0, t).pdf(self.x_inf)
         else:  # log-normal
             v = np.log(var/(mean ** 2) + 1)
             m = np.log(mean) - (v / 2)
