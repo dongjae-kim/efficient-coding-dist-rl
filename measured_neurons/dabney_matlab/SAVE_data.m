@@ -66,3 +66,29 @@ end
 
 dat = struct('dat', dat_cell);
 save('dat_eachneuron.mat', 'dat')
+
+
+% if baselineCorrection
+spikes = PSTH;
+
+dataUnexpected_All = mean(spikes(whichCellsToUse, 1:1:7, :, timesToIndices(responseWindowUnexp, ...
+    psthWindow, psthResolution)), 4);
+dataExpected_All = mean(spikes(whichCellsToUse, 8:1:14, :, timesToIndices(responseWindowExp, ...
+    psthWindow, psthResolution)), 4);
+
+
+perCell = cat(3, dataExpected_All,dataUnexpected_All - mean(mean(nanmean(dataUnexpected_All,3),1),2)...
+    + mean(mean(nanmean(dataExpected_All,3),1),2));
+
+dat_cell = cell(1,40);
+for i = 1:1:40
+    datss = [];
+    for j = 1 :1 : 7
+        datss = [datss squeeze(perCell(i,j,:))];
+    end
+    dat_cell{1,i} = datss;
+end
+
+dat = struct('dat', dat_cell);
+save('dat_eachneuron_bc.mat', 'dat')
+
