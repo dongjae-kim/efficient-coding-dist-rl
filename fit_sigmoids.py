@@ -146,7 +146,7 @@ def extract_data(dat, i, juiceAmounts=juiceAmounts):
 
 
 def load_all_data():
-    dat = sio.loadmat("measured_neurons/dat_eachneuron.mat")
+    dat = sio.loadmat("measured_neurons/dat_eachneuron_bc.mat")
     dat = dat["dat"]
     data = [extract_data(dat, i) for i in range(dat.shape[1])]
     return data
