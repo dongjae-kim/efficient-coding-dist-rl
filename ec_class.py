@@ -55,8 +55,8 @@ class value_efficient_coding_moment:
             self.x = np.linspace(np.finfo(float).eps, 30, num=int(1e3))
             self.x_inf = np.linspace(np.finfo(float).eps, 300, num=int(1e4))
         else:
-            self.x = np.linspace(np.finfo(float).eps, 30, num=int(1e4))
-            self.x_inf = np.linspace(np.finfo(float).eps, 300, num=int(1e5))
+            self.x = np.linspace(np.finfo(float).eps, 30, num=int(1e5))
+            self.x_inf = np.linspace(np.finfo(float).eps, 300, num=int(1e6))
         self.x_log = np.log(self.x)  # np.linspace(-5, 5, num=int(1e3))
         # np.linspace(-50, 50, num=int(1e4))
         self.x_log_inf = np.log(self.x_inf)
@@ -1445,5 +1445,5 @@ class value_efficient_coding_moment:
         pars = np.zeros((self.N, 3))
         for i_n, neuron in enumerate(self.neurons_):
             y = np.interp(x, self.x, neuron)
-            pars[i_n], _ = fit_sigmoid(x, y, w=w)
+            pars[i_n], _ = fit_sigmoid(x, y, w=w, slope_min=0.1)
         return pars

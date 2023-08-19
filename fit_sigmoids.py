@@ -72,9 +72,9 @@ def poisson_lik_sig(y, x, a, b, c, w=None):
     return -lik_sum, -lik_grad
 
 
-def fit_sigmoid(x, y, x_init=None, w=None):
+def fit_sigmoid(x, y, x_init=None, w=None, slope_min=0.01):
     if x_init is None:
-        x_init = np.array((1, 10, 1))
+        x_init = np.array((1, 20, 3))
 
     def f(par):
         return poisson_lik_sig(y, x, par[0], par[1], par[2], w=w)
@@ -85,9 +85,9 @@ def fit_sigmoid(x, y, x_init=None, w=None):
         jac=True,
         bounds=(
             [
-                (np.finfo(float).eps, 3),
+                (slope_min, 3),
                 (np.finfo(float).eps, 100),
-                (0.01, 20),  # range of juice rewards
+                (0.1, 20),  # range of juice rewards
             ]
         ),
     )
@@ -153,10 +153,17 @@ def load_all_data():
 
 
 if __name__ == "__main__":
+    import argparse
+
+    parse = argparse.ArgumentParser()
+    parse.add_argument("-b", "--boot", action="store_true")
+    parse.add_argument("-m", "--min", action="store_false")
+    args = parse.parse_args()
+
     # simple fits:
     data = load_all_data()
-    initial_guess = [1, 1, 0]
-    remove_min = True
+    initial_guess = np.array([1, 10, 3])
+    remove_min = args.min
 
     ps = np.zeros((40, 3))
     for i in tqdm.trange(40):
@@ -171,50 +178,51 @@ if __name__ == "__main__":
     else:
         sio.savemat("curve_fit_parameters.mat", {"ps": ps})
 
-    # Bootstrapping trials
-    num_sim = int(5e3)
+    if args.boot:
+        # Bootstrapping trials
+        num_sim = int(5e3)
 
-    ps = np.zeros((40, num_sim, 3))
-    for i in tqdm.trange(40):
-        x, y = data[i]
-        if remove_min:
-            y -= np.min(y)
-
-        for simi in range(num_sim):
-            i_sample = np.random.choice(
-                np.linspace(0, len(x) - 1, len(x), dtype=np.int16), len(x)
-            )
-            x_ = x[i_sample]
-            y_ = y[i_sample]
-            pars, lik = fit_sigmoid(x_, y_, x_init=initial_guess)
-            ps[i, simi, :] = np.array(pars)
-
-    if remove_min:
-        sio.savemat("curve_fit_bootstrap_min.mat", {"ps": ps})
-    else:
-        sio.savemat("curve_fit_bootstrap.mat", {"ps": ps})
-    # Bootstrapping trials & neuronsps = np.zeros((40, num_sim, 3))
-    for simi in tqdm.trange(num_sim):
-        n_sample = np.random.choice(
-            np.linspace(0, 39, dtype=np.int16), 40
-        )  # neuron sample
-        for count_n, i in enumerate(n_sample):
+        ps = np.zeros((40, num_sim, 3))
+        for i in tqdm.trange(40):
             x, y = data[i]
             if remove_min:
                 y -= np.min(y)
 
-            i_sample = np.random.choice(
-                np.linspace(0, len(x) - 1, len(x), dtype=np.int16), len(x)
-            )
-            x_ = np.array(x)[i_sample]
-            y_ = np.array(y)[i_sample]
+            for simi in range(num_sim):
+                i_sample = np.random.choice(
+                    np.linspace(0, len(x) - 1, len(x), dtype=np.int16), len(x)
+                )
+                x_ = x[i_sample]
+                y_ = y[i_sample]
+                pars, lik = fit_sigmoid(x_, y_, x_init=initial_guess)
+                ps[i, simi, :] = np.array(pars)
 
-            pars, lik = fit_sigmoid(x_, y_, x_init=initial_guess)
+        if remove_min:
+            sio.savemat("curve_fit_bootstrap_min.mat", {"ps": ps})
+        else:
+            sio.savemat("curve_fit_bootstrap.mat", {"ps": ps})
+        # Bootstrapping trials & neuronsps = np.zeros((40, num_sim, 3))
+        for simi in tqdm.trange(num_sim):
+            n_sample = np.random.choice(
+                np.linspace(0, 39, dtype=np.int16), 40
+            )  # neuron sample
+            for count_n, i in enumerate(n_sample):
+                x, y = data[i]
+                if remove_min:
+                    y -= np.min(y)
 
-            ps[count_n, simi, :] = np.array(pars)
-            # print('neuron {} simulation {}'.format(count_n, simi))
+                i_sample = np.random.choice(
+                    np.linspace(0, len(x) - 1, len(x), dtype=np.int16), len(x)
+                )
+                x_ = np.array(x)[i_sample]
+                y_ = np.array(y)[i_sample]
 
-    if remove_min:
-        sio.savemat("curve_fit_bootstrap_neurons_min.mat", {"ps": ps})
-    else:
-        sio.savemat("curve_fit_bootstrap_neurons.mat", {"ps": ps})
+                pars, lik = fit_sigmoid(x_, y_, x_init=initial_guess)
+
+                ps[count_n, simi, :] = np.array(pars)
+                # print('neuron {} simulation {}'.format(count_n, simi))
+
+        if remove_min:
+            sio.savemat("curve_fit_bootstrap_neurons_min.mat", {"ps": ps})
+        else:
+            sio.savemat("curve_fit_bootstrap_neurons.mat", {"ps": ps})

@@ -258,6 +258,46 @@ def error_thresholds(
     return loss_1
 
 
+def error_all(
+    true_midpoints,
+    true_thresh,
+    true_gain,
+    alpha=1,
+    r_star=5,
+    slope_scale=5,
+    N_neurons=39,
+    R_t=R_t,
+    use_gamma=False,
+):
+    # bound
+    if alpha <= 0.01 or alpha > 1:
+        print(1e10)
+        return 1e10
+    # bound
+    if r_star <= 0.01 or r_star > 50:
+        # print(1e10)
+        return 1e10
+
+    thresholds, pars = get_threshold_sig(
+        alpha=alpha,
+        r_star=r_star,
+        slope_scale=slope_scale,
+        N_neurons=N_neurons,
+        R_t=R_t,
+        use_gamma=use_gamma,
+    )
+
+    loss0 = (np.mean(true_midpoints) - np.mean(pars[:, 2])) ** 2
+    loss1 = np.mean((np.sort(thresholds) - np.sort(np.array(true_thresh))) ** 2)
+    # loss1 = (np.mean(thresholds) - np.mean(true_thresh)) ** 2
+    loss2 = (np.mean(true_gain) - np.mean(pars[:, 1])) ** 2
+    print("----")
+    print(loss0)
+    print(loss1)
+    print(loss2)
+    return loss0 + loss1 + loss2
+
+
 def error_thresholds_gain(
     true_thresh,
     true_gain,
@@ -358,6 +398,22 @@ def get_loss_thresh(true_thresh, alpha=1, R_t=None, use_gamma=False):
     return loss
 
 
+def get_loss_all(true_midpoints, true_thresh, true_gain, use_gamma=False):
+    """pars=[alpha, r_star, slope, R_t]"""
+    def loss(pars):
+        return error_all(
+            true_midpoints,
+            true_thresh,
+            true_gain,
+            r_star=pars[1],
+            slope_scale=pars[2],
+            alpha=pars[0],
+            R_t=pars[3],
+            use_gamma=use_gamma,
+        )
+    return loss
+
+
 def get_loss_thresh_gain(true_thresh, true_gain, alpha=1, R_t=None, use_gamma=False):
     """pars=[r_star, slope] or [r_star, slope, R_t]"""
     if R_t is None:
@@ -451,6 +507,21 @@ def get_loss_alpha(midpoints, use_gamma=False):
     return loss
 
 
+def get_loss_alpha_sig(midpoints, use_gamma=False):
+    def loss(alpha):
+        if alpha <= 0:
+            return 1e10
+        else:
+            thresh, pars = get_threshold_sig(
+                alpha=alpha,
+                R_t=250,
+                r_star=5,
+                slope_scale=5)
+            return (np.mean(midpoints) - np.mean(pars[:, 2])) ** 2
+
+    return loss
+
+
 def fit_alpha(alpha_dir="res_alpha", use_gamma=False):
     data = sio.loadmat("curve_fit_parameters.mat")["ps"]
     midpoints = data[np.setdiff1d(np.linspace(0, 39, 40).astype(int), 19), 2]
@@ -460,6 +531,19 @@ def fit_alpha(alpha_dir="res_alpha", use_gamma=False):
     # this is a 1D convex function, no multiple starts needed
     res = minimize_scalar(loss, bounds=[0, 1])
     with open(os.path.join(alpha_dir, "res_alpha.pkl"), "wb") as f:
+        pkl.dump({"res": res}, f)
+    return res.x
+
+
+def fit_alpha_sig(alpha_dir="res_alpha", use_gamma=False):
+    data = sio.loadmat("curve_fit_parameters.mat")["ps"]
+    midpoints = data[np.setdiff1d(np.linspace(0, 39, 40).astype(int), 19), 2]
+    loss = get_loss_alpha_sig(midpoints, use_gamma=use_gamma)
+    if not os.path.exists(alpha_dir):
+        os.makedirs(alpha_dir)
+    # this is a 1D convex function, no multiple starts needed
+    res = minimize_scalar(loss, bounds=[0, 1])
+    with open(os.path.join(alpha_dir, "res_alpha_sig.pkl"), "wb") as f:
         pkl.dump({"res": res}, f)
     return res.x
 
@@ -556,6 +640,59 @@ def fit_rstar_slope_rt(
                 pkl.dump({"res": res}, f)
 
 
+def fit_all(
+    savedir="res_all/", use_gamma=False
+):
+    # fitting all parameters by matching:
+    # mean gain
+    # mean midpoint
+    # thresholds 
+    # and potentially slopes
+
+    # load thresholds
+    NDAT = sio.loadmat(os.path.join("measured_neurons", "data_max.mat"))["dat"]
+    true_thresh = NDAT["ZC"][0, 0].squeeze()
+
+    data = sio.loadmat("curve_fit_parameters_min.mat")
+    true_gain = data["ps"][:, 1]
+    true_midpoints = data["ps"][:, 2]
+    if not os.path.exists(savedir):
+        os.makedirs(savedir)
+
+    # choose starting paramters using meshgrid
+    num_seed = 3
+    XX0 = np.linspace(0.1, 0.9, num_seed)
+    XX1 = np.linspace(5, 9, num_seed)
+    XX2 = np.linspace(1, 9, num_seed)
+    XX = np.array(np.meshgrid(XX0, XX1, XX2, 200)).T.reshape(-1, 4)
+    loss = get_loss_all(
+        true_midpoints, true_thresh, true_gain, use_gamma=use_gamma
+    )
+
+    for ij in range(num_seed**2):
+        if not os.path.exists(
+            os.path.join(savedir, "res_{0}.pkl".format(ij))
+        ):
+            # parameter seeds
+            print("starting fit " + str(ij))
+            print(XX[ij])
+            t0 = time.time()
+            res = minimize(
+                loss,
+                XX[ij],
+                options={"maxiter": 1e5, "disp": "iter"},
+                method="Nelder-Mead",
+            )
+            t1 = time.time()
+            print("!!!!! {}s !!!!!".format(t1 - t0))
+
+            with open(
+                os.path.join(savedir, "res_{0}.pkl".format(ij)),
+                "wb",
+            ) as f:
+                pkl.dump({"res": res}, f)
+
+
 def fit_R_t(alpha=1.0, R_t_dir="res_r_t"):
     indices = np.setdiff1d(np.linspace(0, 39, 40).astype(np.int16), 19)
     if remove_min:
@@ -640,12 +777,19 @@ if __name__ == "__main__":
 
     parse = argparse.ArgumentParser()
     parse.add_argument("-g", "--gamma", action="store_true")
+    parse.add_argument("-a", "--all", action="store_true")
     args = parse.parse_args()
-    if args.gamma:
-        alpha_dir = "res_alpha_gamma"
-        savedir = "res_rstar_slope_rt_gamma/"
+    if args.all:
+        if args.gamma:
+            fit_all(savedir="res_all_gamma", use_gamma=True)
+        else:
+            fit_all(use_gamma=False)
     else:
-        alpha_dir = "res_alpha"
-        savedir = "res_rstar_slope_rt/"
-    alpha = fit_alpha(alpha_dir=alpha_dir, use_gamma=args.gamma)
-    fit_rstar_slope_rt(alpha, savedir=savedir, use_slope=False, use_gamma=args.gamma)
+        if args.gamma:
+            alpha_dir = "res_alpha_gamma"
+            savedir = "res_rstar_slope_rt_gamma/"
+        else:
+            alpha_dir = "res_alpha"
+            savedir = "res_rstar_slope_rt/"
+        alpha = fit_alpha(alpha_dir=alpha_dir, use_gamma=args.gamma)
+        fit_rstar_slope_rt(alpha, savedir=savedir, use_slope=False, use_gamma=args.gamma)
