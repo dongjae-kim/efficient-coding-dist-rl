@@ -425,3 +425,6 @@ print("t-test midpoints against mean reward:")
 print(scipy.stats.ttest_1samp(midpoints, np.sum(juice_magnitudes * juice_prob)))
 print("t-test thresholds against mean reward:")
 print(scipy.stats.ttest_1samp(true_thresh, np.sum(juice_magnitudes * juice_prob)))
+
+print("t-test ec midpoints against mean reward:")
+print(scipy.stats.ttest_1samp(pars_ec[:, 2], np.sum(juice_magnitudes * juice_prob)))
