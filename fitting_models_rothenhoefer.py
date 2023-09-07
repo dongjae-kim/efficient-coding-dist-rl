@@ -142,7 +142,7 @@ class value_efficient_coding_moment():
 
 
         # norm_g = self.p_prior_inf**(1-XX2) * self.R / ((self.N) * (1 - self.cum_P_pseudo)**XX2)
-        norm_g = self.p_prior / ((1 - self.cum_P)**X_OPT_ALPH)
+        norm_g = 1 / ((1 - self.cum_P)**X_OPT_ALPH)
         # norm_g /= NRMLZR
         norm_g /= self.N
         norm_g *= self.R
@@ -158,7 +158,7 @@ class value_efficient_coding_moment():
         thresh_pseudo_ = np.interp(p_thresh, cum_norm_D_pseudop, self.x_inf)
         quant_pseudo_ = np.interp(thresh_pseudo_, self.x_inf, cum_norm_D_pseudop)
 
-        norm_g_pseudo = self.p_prior_pseudo / \
+        norm_g_pseudo = 1 / \
             ((1 - self.cum_P_pseudo)**X_OPT_ALPH)
         norm_g_pseudo /= self.N
         norm_g_pseudo *= self.R
